@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(Windows) Launch",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/main.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "build project"
+        },
+        {
+            "name": "Launch with RenderDoc",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "C:/Program Files/RenderDoc/qrenderdoc.exe",
+            "args": [
+                "${workspaceFolder}/build/main.exe"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        } 
+    ]
+}

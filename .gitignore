@@ -53,4 +53,5 @@ Thumbs.db
 *.ncb
 *.user
 ipch
-.vscode
+# In this simple project, we do want to share the vscode config
+#.vscode
