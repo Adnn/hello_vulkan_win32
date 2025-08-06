@@ -35,6 +35,7 @@
                 "/Zi",
                 "/EHsc",
                 "/nologo",
+                "/MDd",
                 "/Fo${workspaceFolder}\\build\\",
                 // Control where all PDBs will end up, including CRT debug symbols (vc140.pdb)
                 "/Fd${workspaceFolder}\\build\\",
