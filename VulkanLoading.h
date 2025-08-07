@@ -14,12 +14,16 @@
 
 // Functions prototypes, as function pointers
 PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
-#define DECL(functionName) PFN_ ## functionName functionName
-DECL(vkGetDeviceProcAddr);
-DECL(vkEnumerateInstanceVersion);
-DECL(vkCreateInstance);
-DECL(vkDestroyInstance);
-#undef DECL
+#define D(functionName) PFN_ ## functionName functionName
+    D(vkGetDeviceProcAddr);
+    D(vkEnumerateInstanceVersion);
+    D(vkCreateInstance);
+    D(vkDestroyInstance);
+    D(vkEnumeratePhysicalDevices);
+    D(vkGetPhysicalDeviceProperties2);
+    D(vkGetPhysicalDeviceFeatures2);
+    D(vkGetPhysicalDeviceQueueFamilyProperties2);
+#undef D
 
 
 void initializeVulkan()
@@ -39,9 +43,6 @@ void initializeVulkan()
     vkCreateInstance = reinterpret_cast<PFN_vkCreateInstance>(
         vkGetInstanceProcAddr(nullptr, "vkCreateInstance"));
 
-    //#define GETPROC(functionName)
-    //functionName = reinterpret_cast<PFN_ ## functionName>(
-    //    vkGetInstanceProcAddr(nullptr, "vkEnumerateInstanceVersion"));
 }
 
 
@@ -49,7 +50,17 @@ void initializeForInstance(VkInstance aInstance)
 {
     vkDestroyInstance = reinterpret_cast<PFN_vkDestroyInstance>(
         vkGetInstanceProcAddr(aInstance, "vkDestroyInstance"));
-    // TODO: should it be scoped to the device somehow? (like re-assigning itself)
-    vkGetDeviceProcAddr = reinterpret_cast<PFN_vkGetDeviceProcAddr>(
-        vkGetInstanceProcAddr(aInstance, "vkGetDeviceProcAddr"));
+
+#define D(functionName) \
+    functionName = reinterpret_cast<PFN_ ## functionName>( \
+        vkGetInstanceProcAddr(aInstance, #functionName))
+
+    // TODO: should vkGetDeviceProcAddr be scoped to the device somehow? (like re-assigning itself)
+    D(vkGetDeviceProcAddr);
+    D(vkEnumeratePhysicalDevices);
+    D(vkGetPhysicalDeviceProperties2);
+    D(vkGetPhysicalDeviceFeatures2);
+    D(vkGetPhysicalDeviceQueueFamilyProperties2);
+
+#undef D
 }

@@ -9,6 +9,7 @@
 #include <windows.h>
 
 #include <iostream>
+#include <vector>
 
 #include <cassert>
 
@@ -46,6 +47,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     initializeForInstance(vkInstance);
     
     // TODO: Vulkan stuff
+    std::vector<VkPhysicalDevice> physicalDevices = enumeratePhysicalDevices(vkInstance);
+    printPhysicalDeviceProperties(vkInstance, physicalDevices);
 
     // Register the window class.
     const wchar_t CLASS_NAME[]  = L"ad_vulkan_window";

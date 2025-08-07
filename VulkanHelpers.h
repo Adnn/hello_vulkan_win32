@@ -3,7 +3,12 @@
 
 #include "VulkanLoading.h"
 
+#include <format>
+#include <sstream>
+#include <iomanip>
 #include <iostream>
+#include <span>
+#include <vector>
 
 #include <cassert>
 
@@ -29,6 +34,37 @@ const char * toString_debugReportFlagBits(VkDebugReportFlagsEXT aBit)
 }
 
 
+std::string toString_queueFlags(VkQueueFlags aMask)
+{
+#define CASE_EXPLICIT(family, flagbit) \
+    if ((aMask & flagbit) == flagbit) {oss << #family << ", ";}
+
+#define CASE(family) CASE_EXPLICIT(family, VK_QUEUE_ ## family ## _BIT)
+
+    std::ostringstream oss;
+
+    CASE(GRAPHICS);
+    CASE(COMPUTE);
+    CASE(TRANSFER);
+    CASE(SPARSE_BINDING);
+    CASE(PROTECTED);
+    CASE_EXPLICIT(VIDEO_DECODE, VK_QUEUE_VIDEO_DECODE_BIT_KHR);
+    CASE_EXPLICIT(VIDEO_ENCODE, VK_QUEUE_VIDEO_ENCODE_BIT_KHR);
+    CASE_EXPLICIT(OPTICAL_FLOW, VK_QUEUE_OPTICAL_FLOW_BIT_NV);
+    CASE_EXPLICIT(DATA_GRAPH,   VK_QUEUE_DATA_GRAPH_BIT_ARM);
+
+    std::string result = oss.str();
+    if(!result.empty())
+    {
+        result.resize(result.size() - 2);
+    }
+    return result;
+
+#undef CASE
+#undef CASE_EXPLICIT
+}
+
+
 /// @brief Callback for instance creation
 VkBool32 VKAPI_PTR debugReportCallback(
     VkDebugReportFlagsEXT                       flags,
@@ -49,6 +85,17 @@ VkBool32 VKAPI_PTR debugReportCallback(
 }
 
 
+std::string toString_version(uint32_t aVersion)
+{
+    std::ostringstream oss;
+    oss << VK_API_VERSION_MAJOR(aVersion) << "."
+        << VK_API_VERSION_MINOR(aVersion) << "."
+        << VK_API_VERSION_PATCH(aVersion)
+        ;
+    return oss.str();
+}
+
+
 VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVersion)
 {
     uint32_t apiVersion;
@@ -56,11 +103,7 @@ VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVer
     // Variant is always 0 for Vulkan API
     // see: https://docs.vulkan.org/spec/latest/chapters/extensions.html#extendingvulkan-coreversions-versionnumbers
     assert(VK_API_VERSION_VARIANT(apiVersion) == 0);
-    std::cerr << "Vulkan API version: " 
-        << VK_API_VERSION_MAJOR(apiVersion) << "."
-        << VK_API_VERSION_MINOR(apiVersion) << "."
-        << VK_API_VERSION_PATCH(apiVersion)
-        << "\n";
+    std::cerr << "Vulkan API version: " << toString_version(apiVersion) << "\n";
 
     const uint32_t requestApiVersion = VK_API_VERSION_1_4;
     assert(apiVersion >= requestApiVersion);
@@ -100,4 +143,63 @@ VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVer
     assert(vkCreateInstance(&instanceCreateInfo, pAllocator, &instance) == VK_SUCCESS);
 
     return instance;
+}
+
+std::vector<VkPhysicalDevice> enumeratePhysicalDevices(VkInstance vkInstance)
+{
+    uint32_t physicalDeviceCount;
+    vkEnumeratePhysicalDevices(vkInstance, &physicalDeviceCount, nullptr);
+    std::vector<VkPhysicalDevice> physicalDevices{physicalDeviceCount};
+    assert(vkEnumeratePhysicalDevices(vkInstance, &physicalDeviceCount, physicalDevices.data()) == VK_SUCCESS);
+    return physicalDevices;
+}
+
+
+void printPhysicalDeviceProperties(VkInstance vkInstance,
+                                  std::span<VkPhysicalDevice> aPhysicalDevices)
+{
+    // Exist for each other version, 12, 13, ...
+    VkPhysicalDeviceVulkan11Properties physicalDeviceVulkan11Properties{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES,
+    };
+
+    // There is a long list of poperties struct that can be passed in the pNext chain
+    // to query extra information.
+    VkPhysicalDeviceProperties2 properties{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        .pNext = &physicalDeviceVulkan11Properties,
+    };
+    for(uint32_t deviceIdx = 0; deviceIdx != aPhysicalDevices.size(); ++deviceIdx)
+    {
+        const VkPhysicalDevice physical = aPhysicalDevices[deviceIdx];
+
+        vkGetPhysicalDeviceProperties2(physical, &properties);
+
+        uint32_t queueFamilyPropertyCount;
+        vkGetPhysicalDeviceQueueFamilyProperties2(physical, &queueFamilyPropertyCount, nullptr);
+        //std::unique_ptr<VkQueueFamilyProperties2[]> queueFamilyPropertiesArray{
+        //    new VkQueueFamilyProperties2[queueFamilyPropertyCount]{/*default construct, i.e. zero init*/}};
+        std::vector<VkQueueFamilyProperties2> queueFamilyPropertiesVector{queueFamilyPropertyCount};
+        vkGetPhysicalDeviceQueueFamilyProperties2(physical, &queueFamilyPropertyCount, queueFamilyPropertiesVector.data());
+
+        std::cout << "Physical device #" << deviceIdx <<": "
+             << properties.properties.deviceName
+             << "(" << toString_version(properties.properties.driverVersion) << ")"
+             << " supports Vulkan " << toString_version(properties.properties.apiVersion)
+             << "\nsupported queues: "
+             ;
+
+            for(const VkQueueFamilyProperties2 & queueFamilyProperties2 : queueFamilyPropertiesVector)
+                //std::span{queueFamilyPropertiesArray.get(), queueFamilyPropertyCount})
+            {
+                const VkQueueFamilyProperties & properties = queueFamilyProperties2.queueFamilyProperties;
+                std::cout 
+                    << "\n\t- " 
+                    //<< "(0b" << std::format("{:b}", properties.queueFlags) << ") "
+                    << toString_queueFlags(properties.queueFlags) 
+                    << ": " << properties.queueCount;
+            }
+
+            std::cout << "\n";
+    }
 }
