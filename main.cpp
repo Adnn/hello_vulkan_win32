@@ -14,6 +14,7 @@
 #include <cassert>
 
 VkInstance vkInstance;
+VkDevice vkDevice;
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
@@ -49,6 +50,25 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     // TODO: Vulkan stuff
     std::vector<VkPhysicalDevice> physicalDevices = enumeratePhysicalDevices(vkInstance);
     printPhysicalDeviceProperties(vkInstance, physicalDevices);
+
+    // We hardcode using the first physical device
+    VkPhysicalDevice vkPhysicalDevice = physicalDevices.front();
+    QueueSelection queueSelection = pickQueueFamily(vkInstance, vkPhysicalDevice);
+    vkDevice = createDevice(vkInstance, vkPhysicalDevice, queueSelection);
+    initializeForDevice(vkDevice);
+
+    VkDeviceQueueInfo2 deviceQueueInfo2{
+        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_INFO_2,
+        // TODO: handle that family index cleanly
+        .queueFamilyIndex = queueSelection.mQueueFamilyIndex,
+        // Only 1 queue requested at device creation
+        .queueIndex = 0,
+    };
+    VkQueue vkQueue;
+    vkGetDeviceQueue2(vkDevice, &deviceQueueInfo2, &vkQueue);
+
+    // Use the device
+
 
     // Register the window class.
     const wchar_t CLASS_NAME[]  = L"ad_vulkan_window";
@@ -103,6 +123,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         //
         // Vulkan clean-up
         //
+
+        // Device
+        assertVkSuccess(vkDeviceWaitIdle(vkDevice));
+        vkDestroyDevice(vkDevice, pAllocator);
+
+        // Instance
         vkDestroyInstance(vkInstance, pAllocator);
 
         PostQuitMessage(0);

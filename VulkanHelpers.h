@@ -15,6 +15,12 @@
 
 static VkAllocationCallbacks * const pAllocator = nullptr;
 
+// To be extended with logging of specific errors
+void assertVkSuccess(VkResult aResult)
+{
+    assert(aResult == VK_SUCCESS);
+}
+
 /// @brief Converts an enumerator from VkDebugReportFlagBitsEXT to c-string
 const char * toString_debugReportFlagBits(VkDebugReportFlagsEXT aBit)
 {
@@ -99,7 +105,7 @@ std::string toString_version(uint32_t aVersion)
 VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVersion)
 {
     uint32_t apiVersion;
-    assert(vkEnumerateInstanceVersion(&apiVersion) == VK_SUCCESS);
+    assertVkSuccess(vkEnumerateInstanceVersion(&apiVersion));
     // Variant is always 0 for Vulkan API
     // see: https://docs.vulkan.org/spec/latest/chapters/extensions.html#extendingvulkan-coreversions-versionnumbers
     assert(VK_API_VERSION_VARIANT(apiVersion) == 0);
@@ -140,7 +146,7 @@ VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVer
     };
 
     VkInstance instance;
-    assert(vkCreateInstance(&instanceCreateInfo, pAllocator, &instance) == VK_SUCCESS);
+    assertVkSuccess(vkCreateInstance(&instanceCreateInfo, pAllocator, &instance));
 
     return instance;
 }
@@ -150,7 +156,7 @@ std::vector<VkPhysicalDevice> enumeratePhysicalDevices(VkInstance vkInstance)
     uint32_t physicalDeviceCount;
     vkEnumeratePhysicalDevices(vkInstance, &physicalDeviceCount, nullptr);
     std::vector<VkPhysicalDevice> physicalDevices{physicalDeviceCount};
-    assert(vkEnumeratePhysicalDevices(vkInstance, &physicalDeviceCount, physicalDevices.data()) == VK_SUCCESS);
+    assertVkSuccess(vkEnumeratePhysicalDevices(vkInstance, &physicalDeviceCount, physicalDevices.data()));
     return physicalDevices;
 }
 
@@ -202,4 +208,44 @@ void printPhysicalDeviceProperties(VkInstance vkInstance,
 
             std::cout << "\n";
     }
+}
+
+struct QueueSelection
+{
+    uint32_t mQueueFamilyIndex;
+};
+
+QueueSelection pickQueueFamily(VkInstance vkInstance, VkPhysicalDevice vkPhysicalDevice)
+{
+    // TODO: compute the queue family index from a list of required queues.
+    return QueueSelection{
+        .mQueueFamilyIndex = 0,
+    };
+}
+
+VkDevice createDevice(VkInstance vkInstance,
+                      VkPhysicalDevice vkPhysicalDevice,
+                      const QueueSelection & aQueueSelection
+                      )
+{
+    const uint32_t queueCount = 1;
+    // TODO: assign priorities
+    std::vector<float> queuePriorities(queueCount);
+
+    VkDeviceQueueCreateInfo deviceQueueCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueFamilyIndex = aQueueSelection.mQueueFamilyIndex,
+        .queueCount = queueCount,
+        .pQueuePriorities = queuePriorities.data(),
+    };
+
+    VkDeviceCreateInfo deviceCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .queueCreateInfoCount = 1,
+        .pQueueCreateInfos = &deviceQueueCreateInfo,
+    };
+
+    VkDevice vkDevice;
+    vkCreateDevice(vkPhysicalDevice, &deviceCreateInfo, pAllocator, &vkDevice);
+    return vkDevice;
 }

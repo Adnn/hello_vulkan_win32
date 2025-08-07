@@ -18,11 +18,17 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkGetDeviceProcAddr);
     D(vkEnumerateInstanceVersion);
     D(vkCreateInstance);
+
     D(vkDestroyInstance);
     D(vkEnumeratePhysicalDevices);
     D(vkGetPhysicalDeviceProperties2);
     D(vkGetPhysicalDeviceFeatures2);
     D(vkGetPhysicalDeviceQueueFamilyProperties2);
+    D(vkCreateDevice);
+
+    D(vkDestroyDevice);
+    D(vkDeviceWaitIdle);
+    D(vkGetDeviceQueue2);
 #undef D
 
 
@@ -61,6 +67,22 @@ void initializeForInstance(VkInstance aInstance)
     D(vkGetPhysicalDeviceProperties2);
     D(vkGetPhysicalDeviceFeatures2);
     D(vkGetPhysicalDeviceQueueFamilyProperties2);
+    D(vkCreateDevice);
 
+#undef D
+}
+
+
+void initializeForDevice(VkDevice aDevice)
+{
+    vkDestroyDevice = reinterpret_cast<PFN_vkDestroyDevice>(
+        vkGetDeviceProcAddr(aDevice, "vkDestroyDevice"));
+
+#define D(functionName) \
+    functionName = reinterpret_cast<PFN_ ## functionName>( \
+        vkGetDeviceProcAddr(aDevice, #functionName))
+
+    D(vkDeviceWaitIdle);
+    D(vkGetDeviceQueue2);
 #undef D
 }
