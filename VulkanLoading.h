@@ -5,6 +5,10 @@
 // (that would be statisfied by linking against the Vulkan SDK loader .lib)
 // This way we can declare all functions as variable that we will assign ourselves
 #define VK_NO_PROTOTYPES
+// Required to control vulkan.h as to include win32 specific header 
+// (notably declaring VK_KHR_win32_surface symbols) 
+// see: https://docs.vulkan.org/spec/latest/appendices/boilerplate.html#boilerplate-wsi-header-table
+#define VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.h>
 
 #include "WindowsHelpers.h"
@@ -26,10 +30,28 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkGetPhysicalDeviceFeatures2);
     D(vkGetPhysicalDeviceQueueFamilyProperties2);
     D(vkCreateDevice);
+    D(vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
+    // VK_KHR_surface
+    D(vkDestroySurfaceKHR);
+    // VK_KHR_win32_surface
+    D(vkCreateWin32SurfaceKHR);
 
+    //
+    // Device functions
+    //
     D(vkDestroyDevice);
     D(vkDeviceWaitIdle);
     D(vkGetDeviceQueue2);
+    D(vkCreateFence);
+    D(vkDestroyFence);
+    D(vkWaitForFences);
+    // VK_KHR_swapchain
+    D(vkCreateSwapchainKHR);
+    D(vkDestroySwapchainKHR);
+    D(vkGetSwapchainImagesKHR);
+    D(vkAcquireNextImageKHR);
+    D(vkQueuePresentKHR);
+
 #undef D
 
 
@@ -75,6 +97,11 @@ void initializeForInstance(VkInstance aInstance)
     D(vkGetPhysicalDeviceFeatures2);
     D(vkGetPhysicalDeviceQueueFamilyProperties2);
     D(vkCreateDevice);
+    D(vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
+
+    D(vkDestroySurfaceKHR);
+
+    D(vkCreateWin32SurfaceKHR);
 
 #undef D
 }
@@ -91,5 +118,14 @@ void initializeForDevice(VkDevice aDevice)
 
     D(vkDeviceWaitIdle);
     D(vkGetDeviceQueue2);
+    D(vkCreateFence);
+    D(vkDestroyFence);
+    D(vkWaitForFences);
+
+    D(vkCreateSwapchainKHR);
+    D(vkDestroySwapchainKHR);
+    D(vkGetSwapchainImagesKHR);
+    D(vkAcquireNextImageKHR);
+    D(vkQueuePresentKHR);
 #undef D
 }

@@ -106,6 +106,91 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
         return 0;
     }
 
+    //
+    // Vulkan WSI (Window System Integration)
+    //
+    
+    // Create surface for the window
+    VkWin32SurfaceCreateInfoKHR win32SurfaceCreateInfoKHR{
+        .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+        .hinstance = hInstance,
+        .hwnd = hwnd,
+    };
+    VkSurfaceKHR vkSurface;
+    vkCreateWin32SurfaceKHR(vkInstance, &win32SurfaceCreateInfoKHR, pAllocator, &vkSurface);
+
+    // Create swapchain
+    VkSurfaceCapabilitiesKHR vkSurfaceCapabilities;
+    assertVkSuccess(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkPhysicalDevice, vkSurface, &vkSurfaceCapabilities));
+    // TODO: ensure the capabilities we are using are indeed available in vkSurfaceCapabilities.
+
+    //TODO: we should compare to a tutorial, there is so much here
+    VkSwapchainCreateInfoKHR swapchainCreateInfoKHR{
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface = vkSurface,
+        .minImageCount = 2, // Double-buffering, I guess requires 2
+        .imageFormat = VK_FORMAT_B8G8R8A8_SRGB, // Really, I am guessing at this point
+        .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, // This is where we would HDR
+        .imageExtent = vkSurfaceCapabilities.currentExtent,
+        .imageArrayLayers = 1,
+        // Depth stencil attachment is not a valid usage (thank you validation layer)
+        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT /*| VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT*/,
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, // treate the image as opaque when compositing
+        .presentMode = VK_PRESENT_MODE_FIFO_KHR, // TODO: can we do better? This is the only required mode
+        .clipped = VK_FALSE, // let's be safe ATM
+        .oldSwapchain = VK_NULL_HANDLE,
+    };
+    VkSwapchainKHR vkSwapchain;
+    assertVkSuccess(vkCreateSwapchainKHR(vkDevice, &swapchainCreateInfoKHR, pAllocator, &vkSwapchain));
+
+    // Get swapchain images. They are fully backed by memory.
+    uint32_t swapchainImageCount;
+    vkGetSwapchainImagesKHR(vkDevice, vkSwapchain, &swapchainImageCount, nullptr);
+    std::vector<VkImage> swapchainImages(swapchainImageCount);
+    assertVkSuccess(vkGetSwapchainImagesKHR(vkDevice, vkSwapchain, &swapchainImageCount, swapchainImages.data()));
+    std::cout << "Swapchain has " << swapchainImageCount << " images.\n\n";
+
+    // TODO: transition to a valid layout
+    // > All presentable images are initially in the VK_IMAGE_LAYOUT_UNDEFINED layout, thus before using presentable images, the application must transition them to a valid layout for the intended use.
+
+    VkSemaphore acquireSemaphore =VK_NULL_HANDLE;
+    VkFence acquireFence;
+    VkFenceCreateInfo fenceCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+    };
+    vkCreateFence(vkDevice, &fenceCreateInfo, pAllocator, &acquireFence);
+
+    uint32_t nextImageIndex;
+    // TODO: handle window resize (VK_ERROR_OUT_OF_DATE_KHR?)
+    assertVkSuccess(vkAcquireNextImageKHR(vkDevice, vkSwapchain, UINT64_MAX/*treated as infinite timeout, 0 would mean not wait allowed*/,
+                                          acquireSemaphore, acquireFence, &nextImageIndex));
+
+    // Present the next image 
+
+    // Use synchronization to ensure presentation engine reads have completed on the next image.
+    // TODO: Implement the recommended idiom via semaphore instead (from WSI Swapchain):
+    // > When the presentable image will be accessed by some stage S, the recommended idiom for ensuring correct synchronization is:
+    assertVkSuccess(vkWaitForFences(vkDevice, 1, &acquireFence, VK_TRUE, UINT64_MAX));
+    vkDestroyFence(vkDevice, acquireFence, pAllocator);
+
+    // TODO: use sync to ensure all commands in the specified queue completed before presentation begins
+    // >  semaphores must be used to ensure that prior rendering and other commands in the specified queue complete before the presentation begins.
+    // TODO: transition to present layout 
+    // > Before an application can present an image, the image’s layout must be transitioned to the VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+    VkPresentInfoKHR presentInfo{
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .swapchainCount = 1,
+        .pSwapchains = &vkSwapchain,
+        .pImageIndices = &nextImageIndex,
+        .pResults = NULL, // TODO: would it provide more info in the single swapchain situation?
+    };
+    assertVkSuccess(vkQueuePresentKHR(vkQueue, &presentInfo));
+
+    //
+    // Show window and enter main event loop
+    //
     ShowWindow(hwnd, nCmdShow);
     //ShowWindow(hwnd, SW_SHOWDEFAULT);
 
@@ -117,6 +202,21 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
         DispatchMessage(&msg);
     }
 
+    //
+    // Vulkan clean-up
+    //
+
+    // TODO: move to the window destroy, it is time to make a user ptr
+
+    // Swapchain and surface
+    vkDestroySwapchainKHR(vkDevice, vkSwapchain, pAllocator);
+    vkDestroySurfaceKHR(vkInstance, vkSurface, pAllocator);
+    // Device
+    assertVkSuccess(vkDeviceWaitIdle(vkDevice));
+    vkDestroyDevice(vkDevice, pAllocator);
+    // Instance
+    vkDestroyInstance(vkInstance, pAllocator);
+
     return 0;
 }
 
@@ -125,17 +225,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     switch (uMsg)
     {
     case WM_DESTROY:
-        //
-        // Vulkan clean-up
-        //
-
-        // Device
-        assertVkSuccess(vkDeviceWaitIdle(vkDevice));
-        vkDestroyDevice(vkDevice, pAllocator);
-
-        // Instance
-        vkDestroyInstance(vkInstance, pAllocator);
-
         PostQuitMessage(0);
         return 0;
 

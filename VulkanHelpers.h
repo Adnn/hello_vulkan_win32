@@ -137,6 +137,10 @@ VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVer
         .apiVersion = aRequestedApiVersion,
     };
 
+    std::vector<const char *> enabledInstanceExtensionNames{
+        "VK_KHR_surface",
+        "VK_KHR_win32_surface",
+    };
     // TODO: we should rely on more data-oriented approaches, such as configurator
     std::vector<const char *> enabledLayerNames{
         // Note: The validation layer is not distributed with the ICD
@@ -150,6 +154,8 @@ VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVer
         .pApplicationInfo = &applicationInfo,
         .enabledLayerCount = (uint32_t)enabledLayerNames.size(),
         .ppEnabledLayerNames = enabledLayerNames.data(),
+        .enabledExtensionCount = (uint32_t)enabledInstanceExtensionNames.size(),
+        .ppEnabledExtensionNames = enabledInstanceExtensionNames.data(),
         // TODO: Layers
     };
 
@@ -258,6 +264,10 @@ VkDevice createDevice(VkInstance vkInstance,
     // TODO: assign priorities
     std::vector<float> queuePriorities(queueCount);
 
+    std::vector<const char *>enabledDeviceExtensionNames{
+        "VK_KHR_swapchain",
+    };
+
     VkDeviceQueueCreateInfo deviceQueueCreateInfo{
         .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
         .queueFamilyIndex = aQueueSelection.mQueueFamilyIndex,
@@ -269,6 +279,8 @@ VkDevice createDevice(VkInstance vkInstance,
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &deviceQueueCreateInfo,
+        .enabledExtensionCount = (uint32_t)enabledDeviceExtensionNames.size(),
+        .ppEnabledExtensionNames = enabledDeviceExtensionNames.data(),
     };
 
     VkDevice vkDevice;
