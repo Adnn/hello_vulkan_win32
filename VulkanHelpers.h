@@ -137,11 +137,19 @@ VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVer
         .apiVersion = aRequestedApiVersion,
     };
 
+    // TODO: we should rely on more data-oriented approaches, such as configurator
+    std::vector<const char *> enabledLayerNames{
+        // Note: The validation layer is not distributed with the ICD
+        // It can notably be installed via Vulkan SDK
+        "VK_LAYER_KHRONOS_validation",
+    };
     VkInstanceCreateInfo instanceCreateInfo{
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext = &debugReportCallbackCreateInfoEXT,
         .flags = 0,
         .pApplicationInfo = &applicationInfo,
+        .enabledLayerCount = (uint32_t)enabledLayerNames.size(),
+        .ppEnabledLayerNames = enabledLayerNames.data(),
         // TODO: Layers
     };
 
@@ -209,6 +217,24 @@ void printPhysicalDeviceProperties(VkInstance vkInstance,
             std::cout << "\n";
     }
 }
+
+
+void printEnumeratedLayers()
+{
+    uint32_t layerPropertiesCount;
+    vkEnumerateInstanceLayerProperties(&layerPropertiesCount, NULL);
+    std::vector<VkLayerProperties> layerPropertiesVector(layerPropertiesCount);
+    assertVkSuccess(vkEnumerateInstanceLayerProperties(&layerPropertiesCount, layerPropertiesVector.data()));
+    for(const auto & layerProperties : layerPropertiesVector)
+    {
+        std::cout << "- Layer " << layerProperties.layerName
+            << "(" << layerProperties.implementationVersion << ")"
+            << ": " << layerProperties.description
+            << "\n"
+            ;
+    }
+}
+
 
 struct QueueSelection
 {

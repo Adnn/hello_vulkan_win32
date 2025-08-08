@@ -18,6 +18,7 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkGetDeviceProcAddr);
     D(vkEnumerateInstanceVersion);
     D(vkCreateInstance);
+    D(vkEnumerateInstanceLayerProperties);
 
     D(vkDestroyInstance);
     D(vkEnumeratePhysicalDevices);
@@ -49,6 +50,12 @@ void initializeVulkan()
     vkCreateInstance = reinterpret_cast<PFN_vkCreateInstance>(
         vkGetInstanceProcAddr(nullptr, "vkCreateInstance"));
 
+#define D(functionName) \
+    functionName = reinterpret_cast<PFN_ ## functionName>( \
+        vkGetInstanceProcAddr(nullptr, #functionName))
+
+    D(vkEnumerateInstanceLayerProperties);
+#undef D
 }
 
 

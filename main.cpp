@@ -51,12 +51,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     std::vector<VkPhysicalDevice> physicalDevices = enumeratePhysicalDevices(vkInstance);
     printPhysicalDeviceProperties(vkInstance, physicalDevices);
 
-    // We hardcode using the first physical device
+    // We hardcode using the first physical device and create a logical device
     VkPhysicalDevice vkPhysicalDevice = physicalDevices.front();
     QueueSelection queueSelection = pickQueueFamily(vkInstance, vkPhysicalDevice);
     vkDevice = createDevice(vkInstance, vkPhysicalDevice, queueSelection);
     initializeForDevice(vkDevice);
 
+    // Retrieve the handle to a graphics queue
     VkDeviceQueueInfo2 deviceQueueInfo2{
         .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_INFO_2,
         // TODO: handle that family index cleanly
@@ -67,8 +68,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     VkQueue vkQueue;
     vkGetDeviceQueue2(vkDevice, &deviceQueueInfo2, &vkQueue);
 
-    // Use the device
+    // Enumerate layers
+    printEnumeratedLayers();
 
+    //
+    // Win32: setup a window
+    //
 
     // Register the window class.
     const wchar_t CLASS_NAME[]  = L"ad_vulkan_window";
