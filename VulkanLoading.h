@@ -60,6 +60,8 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkAcquireNextImageKHR);
     D(vkQueuePresentKHR);
     D(vkQueueSubmit2);
+    // VK_EXT_debug_utils
+    D(vkSetDebugUtilsObjectNameEXT);
 
 #undef D
 
@@ -145,5 +147,7 @@ void initializeForDevice(VkDevice aDevice)
     D(vkAcquireNextImageKHR);
     D(vkQueuePresentKHR);
     D(vkQueueSubmit2);
+
+    D(vkSetDebugUtilsObjectNameEXT);
 #undef D
 }

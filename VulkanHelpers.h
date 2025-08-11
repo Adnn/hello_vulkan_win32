@@ -139,6 +139,7 @@ VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVer
 
     std::vector<const char *> enabledInstanceExtensionNames{
         "VK_EXT_debug_report", // For VkDebugReportCallbackCreateInfoEXT 
+        "VK_EXT_debug_utils",
         "VK_KHR_surface",
         "VK_KHR_win32_surface",
     };
@@ -162,7 +163,6 @@ VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVer
 
     VkInstance instance;
     assertVkSuccess(vkCreateInstance(&instanceCreateInfo, pAllocator, &instance));
-
     return instance;
 }
 
@@ -297,6 +297,93 @@ VkDevice createDevice(VkInstance vkInstance,
     };
 
     VkDevice vkDevice;
-    vkCreateDevice(vkPhysicalDevice, &deviceCreateInfo, pAllocator, &vkDevice);
+    assertVkSuccess(vkCreateDevice(vkPhysicalDevice, &deviceCreateInfo, pAllocator, &vkDevice));
     return vkDevice;
+}
+
+
+VkFence createFence(VkDevice vkDevice)
+{
+    VkFence fence;
+    VkFenceCreateInfo fenceCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+    };
+    assertVkSuccess(vkCreateFence(vkDevice, &fenceCreateInfo, pAllocator, &fence));
+    return fence;
+}
+
+
+template <class T_handle>
+constexpr VkObjectType getObjectType()
+{
+#define MAP(objectType, handleType) \
+    else if(std::is_same_v<T_handle, handleType>) return objectType
+
+    if constexpr(std::is_same_v<T_handle, VkInstance>) return VK_OBJECT_TYPE_INSTANCE;
+    MAP(VK_OBJECT_TYPE_INSTANCE, VkInstance);
+    MAP(VK_OBJECT_TYPE_PHYSICAL_DEVICE, VkPhysicalDevice);
+    MAP(VK_OBJECT_TYPE_DEVICE, VkDevice);
+    MAP(VK_OBJECT_TYPE_QUEUE, VkQueue);
+    MAP(VK_OBJECT_TYPE_SEMAPHORE, VkSemaphore);
+    MAP(VK_OBJECT_TYPE_COMMAND_BUFFER, VkCommandBuffer);
+    MAP(VK_OBJECT_TYPE_FENCE, VkFence);
+    MAP(VK_OBJECT_TYPE_DEVICE_MEMORY, VkDeviceMemory);
+    MAP(VK_OBJECT_TYPE_BUFFER, VkBuffer);
+    MAP(VK_OBJECT_TYPE_IMAGE, VkImage);
+    MAP(VK_OBJECT_TYPE_EVENT, VkEvent);
+    MAP(VK_OBJECT_TYPE_QUERY_POOL, VkQueryPool);
+    MAP(VK_OBJECT_TYPE_BUFFER_VIEW, VkBufferView);
+    MAP(VK_OBJECT_TYPE_IMAGE_VIEW, VkImageView);
+    MAP(VK_OBJECT_TYPE_SHADER_MODULE, VkShaderModule);
+    MAP(VK_OBJECT_TYPE_PIPELINE_CACHE, VkPipelineCache);
+    MAP(VK_OBJECT_TYPE_PIPELINE_LAYOUT, VkPipelineLayout);
+    MAP(VK_OBJECT_TYPE_RENDER_PASS, VkRenderPass);
+    MAP(VK_OBJECT_TYPE_PIPELINE, VkPipeline);
+    MAP(VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout);
+    MAP(VK_OBJECT_TYPE_SAMPLER, VkSampler);
+    MAP(VK_OBJECT_TYPE_DESCRIPTOR_POOL, VkDescriptorPool);
+    MAP(VK_OBJECT_TYPE_DESCRIPTOR_SET, VkDescriptorSet);
+    MAP(VK_OBJECT_TYPE_FRAMEBUFFER, VkFramebuffer);
+    MAP(VK_OBJECT_TYPE_COMMAND_POOL, VkCommandPool);
+    MAP(VK_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION, VkSamplerYcbcrConversion);
+    MAP(VK_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE, VkDescriptorUpdateTemplate);
+    MAP(VK_OBJECT_TYPE_PRIVATE_DATA_SLOT, VkPrivateDataSlot);
+    MAP(VK_OBJECT_TYPE_SURFACE_KHR, VkSurfaceKHR);
+    MAP(VK_OBJECT_TYPE_SWAPCHAIN_KHR, VkSwapchainKHR);
+    MAP(VK_OBJECT_TYPE_DISPLAY_KHR, VkDisplayKHR);
+    MAP(VK_OBJECT_TYPE_DISPLAY_MODE_KHR, VkDisplayModeKHR);
+    MAP(VK_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT, VkDebugReportCallbackEXT);
+    MAP(VK_OBJECT_TYPE_VIDEO_SESSION_KHR, VkVideoSessionKHR);
+    MAP(VK_OBJECT_TYPE_VIDEO_SESSION_PARAMETERS_KHR, VkVideoSessionParametersKHR);
+    MAP(VK_OBJECT_TYPE_DEBUG_UTILS_MESSENGER_EXT, VkDebugUtilsMessengerEXT);
+    MAP(VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR, VkAccelerationStructureKHR);
+    MAP(VK_OBJECT_TYPE_VALIDATION_CACHE_EXT, VkValidationCacheEXT);
+    MAP(VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV, VkAccelerationStructureNV);
+    MAP(VK_OBJECT_TYPE_PERFORMANCE_CONFIGURATION_INTEL, VkPerformanceConfigurationINTEL);
+    MAP(VK_OBJECT_TYPE_DEFERRED_OPERATION_KHR, VkDeferredOperationKHR);
+    MAP(VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV, VkIndirectCommandsLayoutNV);
+    MAP(VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_EXT, VkIndirectCommandsLayoutEXT);
+    MAP(VK_OBJECT_TYPE_INDIRECT_EXECUTION_SET_EXT, VkIndirectExecutionSetEXT);
+    //MAP(VK_OBJECT_TYPE_BUFFER_COLLECTION_FUCHSIA, VkBufferCollectionFUCHSIA);
+    MAP(VK_OBJECT_TYPE_MICROMAP_EXT, VkMicromapEXT);
+    MAP(VK_OBJECT_TYPE_OPTICAL_FLOW_SESSION_NV, VkOpticalFlowSessionNV);
+    MAP(VK_OBJECT_TYPE_SHADER_EXT, VkShaderEXT);
+    MAP(VK_OBJECT_TYPE_TENSOR_ARM, VkTensorARM);
+    MAP(VK_OBJECT_TYPE_TENSOR_VIEW_ARM, VkTensorViewARM);
+    MAP(VK_OBJECT_TYPE_DATA_GRAPH_PIPELINE_SESSION_ARM, VkDataGraphPipelineSessionARM);
+    else return VK_OBJECT_TYPE_UNKNOWN;
+
+#undef MAP
+}
+
+template <class T_handle>
+void nameObject(VkDevice vkDevice, T_handle aHandle, const char * aName)
+{
+    VkDebugUtilsObjectNameInfoEXT  nameInfo{
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = getObjectType<T_handle>(),
+        .objectHandle = reinterpret_cast<uint64_t>(aHandle),
+        .pObjectName = aName,
+    };
+    vkSetDebugUtilsObjectNameEXT(vkDevice, &nameInfo);
 }
