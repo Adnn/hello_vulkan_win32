@@ -152,9 +152,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     assertVkSuccess(vkGetSwapchainImagesKHR(vkDevice, vkSwapchain, &swapchainImageCount, swapchainImages.data()));
     std::cout << "Swapchain has " << swapchainImageCount << " images.\n\n";
 
-    // TODO: transition to a valid layout
-    // > All presentable images are initially in the VK_IMAGE_LAYOUT_UNDEFINED layout, thus before using presentable images, the application must transition them to a valid layout for the intended use.
-
     VkSemaphore acquireSemaphore =VK_NULL_HANDLE;
     VkFence acquireFence;
     VkFenceCreateInfo fenceCreateInfo{
@@ -167,13 +164,72 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     assertVkSuccess(vkAcquireNextImageKHR(vkDevice, vkSwapchain, UINT64_MAX/*treated as infinite timeout, 0 would mean not wait allowed*/,
                                           acquireSemaphore, acquireFence, &nextImageIndex));
 
-    // Present the next image 
-
     // Use synchronization to ensure presentation engine reads have completed on the next image.
+
     // TODO: Implement the recommended idiom via semaphore instead (from WSI Swapchain):
     // > When the presentable image will be accessed by some stage S, the recommended idiom for ensuring correct synchronization is:
+    // TODO: can probably me moved to queue submission
     assertVkSuccess(vkWaitForFences(vkDevice, 1, &acquireFence, VK_TRUE, UINT64_MAX));
     vkDestroyFence(vkDevice, acquireFence, pAllocator);
+
+    VkCommandPool vkCommandPool;
+    VkCommandPoolCreateInfo commandPoolCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = queueSelection.mQueueFamilyIndex,
+    };
+    vkCreateCommandPool(vkDevice, &commandPoolCreateInfo, pAllocator, &vkCommandPool);
+
+    VkCommandBufferAllocateInfo commandBufferAllocateInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = vkCommandPool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    VkCommandBuffer vkCommandBuffer;
+    assertVkSuccess(vkAllocateCommandBuffers(vkDevice, &commandBufferAllocateInfo, &vkCommandBuffer));
+
+    // Move CB to recording state
+    VkCommandBufferBeginInfo commandBufferBeginInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+    };
+    assertVkSuccess(vkBeginCommandBuffer(vkCommandBuffer, &commandBufferBeginInfo));
+
+    // TODO: transition to a valid layout
+    // > All presentable images are initially in the VK_IMAGE_LAYOUT_UNDEFINED layout, thus before using presentable images, 
+    // > the application must transition them to a valid layout for the intended use.
+
+    //vkCmd*
+
+    // Move CB to executable state
+    assertVkSuccess(vkEndCommandBuffer(vkCommandBuffer));
+
+    //submit queue
+    VkCommandBufferSubmitInfo commandBufferSubmitInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+        .commandBuffer = vkCommandBuffer,
+    };
+    VkSemaphore signalSubmitSemaphore;
+    VkSemaphoreCreateInfo semaphoreCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    };
+    assertVkSuccess(vkCreateSemaphore(vkDevice, &semaphoreCreateInfo, pAllocator, &signalSubmitSemaphore));
+    VkSemaphoreSubmitInfo signalSemaphoreSubmitInfo{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .semaphore = signalSubmitSemaphore,
+    };
+
+    VkFence submitFence = VK_NULL_HANDLE;
+    VkSubmitInfo2 submitInfo2{
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+        .commandBufferInfoCount = 1,
+        .pCommandBufferInfos = &commandBufferSubmitInfo,
+        .signalSemaphoreInfoCount = 1,
+        .pSignalSemaphoreInfos = &signalSemaphoreSubmitInfo,
+    };
+    assertVkSuccess(vkQueueSubmit2(vkQueue, 1, &submitInfo2, submitFence));
+
+    // Present the next image 
 
     // TODO: use sync to ensure all commands in the specified queue completed before presentation begins
     // >  semaphores must be used to ensure that prior rendering and other commands in the specified queue complete before the presentation begins.
@@ -181,6 +237,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     // > Before an application can present an image, the image’s layout must be transitioned to the VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
     VkPresentInfoKHR presentInfo{
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &signalSubmitSemaphore,
         .swapchainCount = 1,
         .pSwapchains = &vkSwapchain,
         .pImageIndices = &nextImageIndex,
@@ -191,22 +249,30 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     //
     // Show window and enter main event loop
     //
-    ShowWindow(hwnd, nCmdShow);
-    //ShowWindow(hwnd, SW_SHOWDEFAULT);
-
-    // Run the message loop.
-    MSG msg = { };
-    while (GetMessage(&msg, NULL, 0, 0))
     {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        ShowWindow(hwnd, nCmdShow);
+        //ShowWindow(hwnd, SW_SHOWDEFAULT);
+
+        // Run the message loop.
+        MSG msg = { };
+        while (GetMessage(&msg, NULL, 0, 0))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
     }
 
+    // TODO: move to the window destroy, it is time to make a user ptr
     //
     // Vulkan clean-up
     //
 
-    // TODO: move to the window destroy, it is time to make a user ptr
+    // semaphore
+    vkDestroySemaphore(vkDevice, signalSubmitSemaphore, pAllocator);
+
+    // Command pool and command buffer
+    vkFreeCommandBuffers(vkDevice, vkCommandPool, 1, &vkCommandBuffer);
+    vkDestroyCommandPool(vkDevice, vkCommandPool, pAllocator);
 
     // Swapchain and surface
     vkDestroySwapchainKHR(vkDevice, vkSwapchain, pAllocator);

@@ -271,8 +271,9 @@ VkDevice createDevice(VkInstance vkInstance,
     // TODO: assign priorities
     std::vector<float> queuePriorities(queueCount);
 
-    std::vector<const char *>enabledDeviceExtensionNames{
-        "VK_KHR_swapchain",
+    VkPhysicalDeviceVulkan13Features physicalDeviceVulkan13Features{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+        .synchronization2 = VK_TRUE,
     };
 
     VkDeviceQueueCreateInfo deviceQueueCreateInfo{
@@ -282,8 +283,13 @@ VkDevice createDevice(VkInstance vkInstance,
         .pQueuePriorities = queuePriorities.data(),
     };
 
+    std::vector<const char *>enabledDeviceExtensionNames{
+        "VK_KHR_swapchain",
+    };
+
     VkDeviceCreateInfo deviceCreateInfo{
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext = &physicalDeviceVulkan13Features,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &deviceQueueCreateInfo,
         .enabledExtensionCount = (uint32_t)enabledDeviceExtensionNames.size(),

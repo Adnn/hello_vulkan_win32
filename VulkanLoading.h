@@ -45,12 +45,21 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkCreateFence);
     D(vkDestroyFence);
     D(vkWaitForFences);
+    D(vkCreateSemaphore);
+    D(vkDestroySemaphore);
+    D(vkCreateCommandPool);
+    D(vkDestroyCommandPool);
+    D(vkAllocateCommandBuffers);
+    D(vkFreeCommandBuffers);
+    D(vkBeginCommandBuffer);
+    D(vkEndCommandBuffer);
     // VK_KHR_swapchain
     D(vkCreateSwapchainKHR);
     D(vkDestroySwapchainKHR);
     D(vkGetSwapchainImagesKHR);
     D(vkAcquireNextImageKHR);
     D(vkQueuePresentKHR);
+    D(vkQueueSubmit2);
 
 #undef D
 
@@ -121,11 +130,20 @@ void initializeForDevice(VkDevice aDevice)
     D(vkCreateFence);
     D(vkDestroyFence);
     D(vkWaitForFences);
+    D(vkCreateSemaphore);
+    D(vkDestroySemaphore);
+    D(vkCreateCommandPool);
+    D(vkDestroyCommandPool);
+    D(vkAllocateCommandBuffers);
+    D(vkFreeCommandBuffers);
+    D(vkBeginCommandBuffer);
+    D(vkEndCommandBuffer);
 
     D(vkCreateSwapchainKHR);
     D(vkDestroySwapchainKHR);
     D(vkGetSwapchainImagesKHR);
     D(vkAcquireNextImageKHR);
     D(vkQueuePresentKHR);
+    D(vkQueueSubmit2);
 #undef D
 }
