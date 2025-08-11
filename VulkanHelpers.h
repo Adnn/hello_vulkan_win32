@@ -138,6 +138,7 @@ VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVer
     };
 
     std::vector<const char *> enabledInstanceExtensionNames{
+        "VK_EXT_debug_report", // For VkDebugReportCallbackCreateInfoEXT 
         "VK_KHR_surface",
         "VK_KHR_win32_surface",
     };
@@ -199,7 +200,12 @@ void printPhysicalDeviceProperties(VkInstance vkInstance,
         vkGetPhysicalDeviceQueueFamilyProperties2(physical, &queueFamilyPropertyCount, nullptr);
         //std::unique_ptr<VkQueueFamilyProperties2[]> queueFamilyPropertiesArray{
         //    new VkQueueFamilyProperties2[queueFamilyPropertyCount]{/*default construct, i.e. zero init*/}};
-        std::vector<VkQueueFamilyProperties2> queueFamilyPropertiesVector{queueFamilyPropertyCount};
+        std::vector<VkQueueFamilyProperties2> queueFamilyPropertiesVector(
+            queueFamilyPropertyCount,
+            VkQueueFamilyProperties2{
+                .sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2,
+            }
+        );
         vkGetPhysicalDeviceQueueFamilyProperties2(physical, &queueFamilyPropertyCount, queueFamilyPropertiesVector.data());
 
         std::cout << "Physical device #" << deviceIdx <<": "
