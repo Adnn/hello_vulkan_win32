@@ -109,7 +109,7 @@ VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVer
     // Variant is always 0 for Vulkan API
     // see: https://docs.vulkan.org/spec/latest/chapters/extensions.html#extendingvulkan-coreversions-versionnumbers
     assert(VK_API_VERSION_VARIANT(apiVersion) == 0);
-    std::cerr << "Vulkan API version: " << toString_version(apiVersion) << "\n";
+    std::cerr << "Vulkan API version: " << toString_version(apiVersion) << "\n\n";
 
     const uint32_t requestApiVersion = VK_API_VERSION_1_4;
     assert(apiVersion >= requestApiVersion);
@@ -220,7 +220,7 @@ void printPhysicalDeviceProperties(VkInstance vkInstance,
                     << ": " << properties.queueCount;
             }
 
-            std::cout << "\n";
+            std::cout << "\n\n";
     }
 }
 
@@ -239,6 +239,7 @@ void printEnumeratedLayers()
             << "\n"
             ;
     }
+    std::cout << "\n";
 }
 
 
