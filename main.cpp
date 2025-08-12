@@ -320,8 +320,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                 };
                 assertVkSuccess(vkQueuePresentKHR(vkQueue, &presentInfo));
 
-                // silly sync
-                // TODO: make it better
+                // Trivial sync, to ensure that the active command buffer has completed
+                // before we call Begin on next frame.
                 assertVkSuccess(vkWaitForFences(vkDevice, 1, &submitFence, VK_TRUE, UINT64_MAX));
                 vkDestroyFence(vkDevice, submitFence, pAllocator);
             }
