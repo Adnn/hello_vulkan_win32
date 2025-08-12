@@ -321,6 +321,94 @@ VkFence createFence(VkDevice vkDevice)
 }
 
 
+void setDynamicPipelineState(VkCommandBuffer vkCommandBuffer, VkExtent2D aSurfaceExtent)
+{
+    // Note: the viewport coordinate system is top-left origin (Y going down),
+    // which is opposite to OpenGL.
+    // (but VK_KHR_maintenance1 allows to flip that)
+    #define VIEWPORT_ORIGIN_BOTTOMLEFT
+    #if defined(VIEWPORT_ORIGIN_BOTTOMLEFT)
+    // Uses VK_KHR_maintenance1, which allow negative heights to result in Y going up in the viewport
+    VkViewport vkViewport{
+        .y = (float)aSurfaceExtent.height,
+        .width = (float)aSurfaceExtent.width,
+        .height = -(float)aSurfaceExtent.height,
+        .minDepth = 0,
+        .maxDepth = 1,
+    };
+    #else
+    VkViewport vkViewport{
+        .width = (float)aSurfaceExtent.width,
+        .height = (float)aSurfaceExtent.height,
+        .minDepth = 0,
+        .maxDepth = 1,
+    };
+    #endif
+    vkCmdSetViewportWithCount(vkCommandBuffer, 1, &vkViewport);
+
+    VkRect2D scissor{
+        .extent = aSurfaceExtent,
+    };
+    vkCmdSetScissorWithCount(vkCommandBuffer, 1, &scissor);
+
+    vkCmdSetRasterizerDiscardEnable(vkCommandBuffer, VK_FALSE);
+
+    vkCmdSetVertexInputEXT(vkCommandBuffer, 0, nullptr, 0, nullptr);
+
+    vkCmdSetPrimitiveTopology(vkCommandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+
+    vkCmdSetPrimitiveRestartEnable(vkCommandBuffer, VK_FALSE);
+
+    vkCmdSetRasterizationSamplesEXT(vkCommandBuffer, VK_SAMPLE_COUNT_1_BIT);
+
+    // I assume the mask to be "do I enable this sample"
+    // TODO: read about sample mask
+    VkSampleMask sampleMask = VK_SAMPLE_COUNT_1_BIT;
+    vkCmdSetSampleMaskEXT(vkCommandBuffer, VK_SAMPLE_COUNT_1_BIT, &sampleMask);
+
+    vkCmdSetAlphaToCoverageEnableEXT(vkCommandBuffer, VK_FALSE);
+
+    vkCmdSetPolygonModeEXT(vkCommandBuffer, VK_POLYGON_MODE_FILL);
+
+    vkCmdSetCullMode(vkCommandBuffer, VK_CULL_MODE_BACK_BIT);
+
+    vkCmdSetFrontFace(vkCommandBuffer, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+
+    vkCmdSetDepthTestEnable(vkCommandBuffer, VK_TRUE);
+
+    vkCmdSetDepthWriteEnable(vkCommandBuffer, VK_TRUE);
+
+    vkCmdSetDepthCompareOp(vkCommandBuffer, VK_COMPARE_OP_LESS);
+
+    vkCmdSetDepthBiasEnable(vkCommandBuffer, VK_FALSE);
+
+    vkCmdSetStencilTestEnable(vkCommandBuffer, VK_FALSE);
+
+    VkColorComponentFlags colorWriteMasks[]{
+        {VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT},
+    };
+    vkCmdSetColorWriteMaskEXT(vkCommandBuffer, 0, std::size(colorWriteMasks), colorWriteMasks);
+
+    VkBool32 colorBlendEnables[]{
+        VK_TRUE,
+    };
+    vkCmdSetColorBlendEnableEXT(vkCommandBuffer, 0, std::size(colorBlendEnables), colorBlendEnables);
+
+    // TODO: look-up default OpenGL blend parameters
+    VkColorBlendEquationEXT colorBlendEquations[]{
+        VkColorBlendEquationEXT{
+            .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+            .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+            .colorBlendOp = VK_BLEND_OP_ADD,
+            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+            .alphaBlendOp = VK_BLEND_OP_ADD,
+        },
+    };
+    vkCmdSetColorBlendEquationEXT(vkCommandBuffer, 0, std::size(colorBlendEquations), colorBlendEquations);
+
+}
+
 template <class T_handle>
 constexpr VkObjectType getObjectType()
 {
