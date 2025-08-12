@@ -56,6 +56,45 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkCmdPipelineBarrier2);
     D(vkCmdClearColorImage);
     D(vkQueueWaitIdle);
+    D(vkCmdBeginRendering);
+    D(vkCmdEndRendering);
+    D(vkCreateImageView);
+    D(vkDestroyImageView);
+    D(vkCmdDraw);
+    D(vkCmdSetViewportWithCount);
+    D(vkCmdSetScissorWithCount);
+    D(vkCmdSetRasterizerDiscardEnable);
+    D(vkCmdSetVertexInputEXT);
+    D(vkCmdSetPrimitiveTopology);
+    D(vkCmdSetPrimitiveRestartEnable);
+    D(vkCmdSetRasterizationSamplesEXT);
+    D(vkCmdSetSampleMaskEXT);
+    D(vkCmdSetAlphaToCoverageEnableEXT);
+    D(vkCmdSetAlphaToOneEnableEXT);
+    D(vkCmdSetPolygonModeEXT);
+    D(vkCmdSetLineWidth);
+    D(vkCmdSetCullMode);
+    D(vkCmdSetFrontFace);
+    D(vkCmdSetDepthTestEnable);
+    D(vkCmdSetDepthWriteEnable);
+    D(vkCmdSetDepthCompareOp);
+    D(vkCmdSetDepthBoundsTestEnable);
+    D(vkCmdSetDepthBounds);
+    D(vkCmdSetDepthBiasEnable);
+    D(vkCmdSetDepthBias);
+    D(vkCmdSetDepthClampEnableEXT);
+    D(vkCmdSetStencilTestEnable);
+    D(vkCmdSetStencilOp);
+    D(vkCmdSetStencilCompareMask);
+    D(vkCmdSetStencilWriteMask);
+    D(vkCmdSetStencilReference);
+    D(vkCmdSetLogicOpEnableEXT);
+    D(vkCmdSetLogicOpEXT);
+    D(vkCmdSetColorWriteMaskEXT);
+    D(vkCmdSetColorBlendEnableEXT);
+    D(vkCmdSetColorBlendEquationEXT);
+    D(vkCmdSetBlendConstants);
+
     // VK_KHR_swapchain
     D(vkCreateSwapchainKHR);
     D(vkDestroySwapchainKHR);
@@ -65,7 +104,10 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkQueueSubmit2);
     // VK_EXT_debug_utils
     D(vkSetDebugUtilsObjectNameEXT);
-
+    // VK_EXT_shader_object
+    D(vkCreateShadersEXT);
+    D(vkDestroyShaderEXT);
+    D(vkCmdBindShadersEXT);
 #undef D
 
 
@@ -146,6 +188,44 @@ void initializeForDevice(VkDevice aDevice)
     D(vkCmdPipelineBarrier2);
     D(vkCmdClearColorImage);
     D(vkQueueWaitIdle);
+    D(vkCmdBeginRendering);
+    D(vkCmdEndRendering);
+    D(vkCreateImageView);
+    D(vkDestroyImageView);
+    D(vkCmdDraw);
+    D(vkCmdSetViewportWithCount);
+    D(vkCmdSetScissorWithCount);
+    D(vkCmdSetRasterizerDiscardEnable);
+    D(vkCmdSetVertexInputEXT);
+    D(vkCmdSetPrimitiveTopology);
+    D(vkCmdSetPrimitiveRestartEnable);
+    D(vkCmdSetRasterizationSamplesEXT);
+    D(vkCmdSetSampleMaskEXT);
+    D(vkCmdSetAlphaToCoverageEnableEXT);
+    D(vkCmdSetAlphaToOneEnableEXT);
+    D(vkCmdSetPolygonModeEXT);
+    D(vkCmdSetLineWidth);
+    D(vkCmdSetCullMode);
+    D(vkCmdSetFrontFace);
+    D(vkCmdSetDepthTestEnable);
+    D(vkCmdSetDepthWriteEnable);
+    D(vkCmdSetDepthCompareOp);
+    D(vkCmdSetDepthBoundsTestEnable);
+    D(vkCmdSetDepthBounds);
+    D(vkCmdSetDepthBiasEnable);
+    D(vkCmdSetDepthBias);
+    D(vkCmdSetDepthClampEnableEXT);
+    D(vkCmdSetStencilTestEnable);
+    D(vkCmdSetStencilOp);
+    D(vkCmdSetStencilCompareMask);
+    D(vkCmdSetStencilWriteMask);
+    D(vkCmdSetStencilReference);
+    D(vkCmdSetLogicOpEnableEXT);
+    D(vkCmdSetLogicOpEXT);
+    D(vkCmdSetColorWriteMaskEXT);
+    D(vkCmdSetColorBlendEnableEXT);
+    D(vkCmdSetColorBlendEquationEXT);
+    D(vkCmdSetBlendConstants);
 
     D(vkCreateSwapchainKHR);
     D(vkDestroySwapchainKHR);
@@ -155,5 +235,9 @@ void initializeForDevice(VkDevice aDevice)
     D(vkQueueSubmit2);
 
     D(vkSetDebugUtilsObjectNameEXT);
+
+    D(vkCreateShadersEXT);
+    D(vkDestroyShaderEXT);
+    D(vkCmdBindShadersEXT);
 #undef D
 }

@@ -2,6 +2,7 @@
 #define UNICODE
 #endif 
 
+#include "FileHelper.h"
 #include "VulkanLoading.h"
 #include "VulkanHelpers.h"
 #include "WindowsHelpers.h"
@@ -158,7 +159,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 
 
     //
-    // Prepare the commande buffer and semaphores for per-frame operations
+    // Prepare the commande buffer and all objects required by per-frame operations
     //
     VkCommandPool vkCommandPool;
     VkCommandPoolCreateInfo commandPoolCreateInfo{
@@ -190,6 +191,63 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
         nameObject(vkDevice, signalSubmitSemaphores[semaphoreIdx],
                    ("signal_QueueSubmit_" + std::to_string(semaphoreIdx)).c_str());
     }
+
+    VkImageSubresourceRange swapchainImageFullRange{
+        // When aspectMask is not included, there is a bug/typo in the validation layer
+        // (the path is missing the subresourceRange stage)
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .levelCount = VK_REMAINING_MIP_LEVELS,
+        .layerCount = VK_REMAINING_ARRAY_LAYERS,
+    };
+
+    std::vector<VkImageView> renderImageViews(swapchainImageCount);
+    VkImageViewCreateInfo imageViewCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = VK_FORMAT_B8G8R8A8_SRGB,
+        .subresourceRange = swapchainImageFullRange,
+    };
+    for(std::size_t imageIdx= 0; imageIdx != swapchainImageCount; ++imageIdx)
+    {
+        imageViewCreateInfo.image = swapchainImages[imageIdx],
+        assertVkSuccess(
+            vkCreateImageView(vkDevice, &imageViewCreateInfo, pAllocator, &renderImageViews[imageIdx]));
+        NAME_VKOBJECT_IDX(renderImageViews[imageIdx], imageIdx);
+    }
+
+    // Create shader objects
+    std::vector<char> vertexCode = readFile("shaders/spirv/Fullscreen.vert.spv");
+    std::vector<char> fragmentCode = readFile("shaders/spirv/Yellow.frag.spv");
+
+    VkShaderCreateInfoEXT shaderCreateInfoEXTs[]{
+        VkShaderCreateInfoEXT{
+            .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+            .flags = VK_SHADER_CREATE_LINK_STAGE_BIT_EXT,
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .nextStage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+            .codeSize = vertexCode.size(),
+            .pCode = vertexCode.data(),
+            .pName = "main",
+        },
+        VkShaderCreateInfoEXT{
+            .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+            .flags = VK_SHADER_CREATE_LINK_STAGE_BIT_EXT,
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+            .codeSize = fragmentCode.size(),
+            .pCode = fragmentCode.data(),
+            .pName = "main",
+        }
+    };
+    const uint32_t shaderCount = std::size(shaderCreateInfoEXTs);
+    std::vector<VkShaderEXT> vkShaderEXTs(shaderCount);
+    assertVkSuccess(
+        vkCreateShadersEXT(vkDevice,
+                           shaderCount,
+                           shaderCreateInfoEXTs,
+                           pAllocator,
+                           vkShaderEXTs.data()));
 
     //
     // Show window and enter main event loop
@@ -224,6 +282,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                 assertVkSuccess(vkAcquireNextImageKHR(vkDevice, vkSwapchain, UINT64_MAX/*treated as infinite timeout, 0 would mean not wait allowed*/,
                                                       acquireSemaphore, acquireFence, &nextImageIndex));
 
+                VkImage nextImage = swapchainImages[nextImageIndex];
+
                 // Use synchronization to ensure presentation engine reads have completed on the next image.
                 // TODO: Implement the recommended idiom via semaphore instead (from WSI Swapchain):
                 // > When the presentable image will be accessed by some stage S, the recommended idiom for ensuring correct synchronization is:
@@ -237,14 +297,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                 };
                 assertVkSuccess(vkBeginCommandBuffer(vkCommandBuffer, &commandBufferBeginInfo));
 
-                VkImageSubresourceRange swapchainImageFullRange{
-                    // When aspectMask is not included, there is a bug/typo in the validation layer
-                    // (the path is missing the subresourceRange stage)
-                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                    .levelCount = VK_REMAINING_MIP_LEVELS,
-                    .layerCount = VK_REMAINING_ARRAY_LAYERS,
-                };
-
                 // Transition to general layout (initializing from undefined layout)
                 // > All presentable images are initially in the VK_IMAGE_LAYOUT_UNDEFINED layout, thus before using presentable images, 
                 // > the application must transition them to a valid layout for the intended use.
@@ -252,7 +304,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                     .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                     .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-                    .image = swapchainImages[nextImageIndex],
+                    .image = nextImage,
                     .subresourceRange = swapchainImageFullRange,
                 };
                 VkDependencyInfo dependencyInfo{
@@ -267,11 +319,129 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                     .float32{0.0f, 0.2f, 0.0f, 1.0f},
                 };
                 vkCmdClearColorImage(vkCommandBuffer,
-                                     swapchainImages[nextImageIndex],
+                                     nextImage,
                                      VK_IMAGE_LAYOUT_GENERAL,
                                      &clearColor,
                                      1,
                                      &swapchainImageFullRange);
+
+                // Draw
+                {
+                    VkRenderingAttachmentInfo renderingColorAttachmentInfo{
+                        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                        .imageView = renderImageViews[nextImageIndex],
+                        .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+                    };
+                    VkRenderingInfo renderingInfo{
+                        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                        .renderArea = VkRect2D{
+                            .offset = VkOffset2D{0, 0},
+                            .extent = vkSurfaceCapabilities.currentExtent,
+                        },
+                        .layerCount = 1,
+                        .colorAttachmentCount = 1,
+                        .pColorAttachments = &renderingColorAttachmentInfo,
+                    };
+                    vkCmdBeginRendering(vkCommandBuffer, &renderingInfo);
+
+                    // Bind shader objects
+                    const VkShaderStageFlagBits stageBits[]{
+                        VK_SHADER_STAGE_VERTEX_BIT,
+                        VK_SHADER_STAGE_FRAGMENT_BIT,
+                    };
+                    vkCmdBindShadersEXT(vkCommandBuffer, shaderCount, stageBits, vkShaderEXTs.data());
+
+                    // Very explicit required state
+
+                    // Note: the viewport coordinate system is top-left origin (Y going down),
+                    // which is opposite to OpenGL.
+                    // (but VK_KHR_maintenance1 allows to flip that)
+                    #define VIEWPORT_ORIGIN_BOTTOMLEFT
+                    #if defined(VIEWPORT_ORIGIN_BOTTOMLEFT)
+                    // Uses VK_KHR_maintenance1, which allow negative heights to result in Y going up in the viewport
+                    VkViewport vkViewport{
+                        .y = (float)vkSurfaceCapabilities.currentExtent.height,
+                        .width = (float)vkSurfaceCapabilities.currentExtent.width,
+                        .height = -(float)vkSurfaceCapabilities.currentExtent.height,
+                        .minDepth = 0,
+                        .maxDepth = 1,
+                    };
+                    #else
+                    VkViewport vkViewport{
+                        .width = (float)vkSurfaceCapabilities.currentExtent.width,
+                        .height = (float)vkSurfaceCapabilities.currentExtent.height,
+                        .minDepth = 0,
+                        .maxDepth = 1,
+                    };
+                    #endif
+                    vkCmdSetViewportWithCount(vkCommandBuffer, 1, &vkViewport);
+
+                    VkRect2D scissor{
+                        .extent = vkSurfaceCapabilities.currentExtent,
+                    };
+                    vkCmdSetScissorWithCount(vkCommandBuffer, 1, &scissor);
+
+                    vkCmdSetRasterizerDiscardEnable(vkCommandBuffer, VK_FALSE);
+
+                    vkCmdSetVertexInputEXT(vkCommandBuffer, 0, nullptr, 0, nullptr);
+
+                    vkCmdSetPrimitiveTopology(vkCommandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+
+                    vkCmdSetPrimitiveRestartEnable(vkCommandBuffer, VK_FALSE);
+
+                    vkCmdSetRasterizationSamplesEXT(vkCommandBuffer, VK_SAMPLE_COUNT_1_BIT);
+
+                    // I assume the mask to be "do I enable this sample"
+                    // TODO: read about sample mask
+                    VkSampleMask sampleMask = VK_SAMPLE_COUNT_1_BIT;
+                    vkCmdSetSampleMaskEXT(vkCommandBuffer, VK_SAMPLE_COUNT_1_BIT, &sampleMask);
+
+                    vkCmdSetAlphaToCoverageEnableEXT(vkCommandBuffer, VK_FALSE);
+
+                    vkCmdSetPolygonModeEXT(vkCommandBuffer, VK_POLYGON_MODE_FILL);
+
+                    vkCmdSetCullMode(vkCommandBuffer, VK_CULL_MODE_BACK_BIT);
+
+                    vkCmdSetFrontFace(vkCommandBuffer, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+
+                    vkCmdSetDepthTestEnable(vkCommandBuffer, VK_TRUE);
+
+                    vkCmdSetDepthWriteEnable(vkCommandBuffer, VK_TRUE);
+
+                    vkCmdSetDepthCompareOp(vkCommandBuffer, VK_COMPARE_OP_LESS);
+
+                    vkCmdSetDepthBiasEnable(vkCommandBuffer, VK_FALSE);
+
+                    vkCmdSetStencilTestEnable(vkCommandBuffer, VK_FALSE);
+
+                    VkColorComponentFlags colorWriteMasks[]{
+                        {VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT},
+                    };
+                    vkCmdSetColorWriteMaskEXT(vkCommandBuffer, 0, std::size(colorWriteMasks), colorWriteMasks);
+
+                    VkBool32 colorBlendEnables[]{
+                        VK_TRUE,
+                    };
+                    vkCmdSetColorBlendEnableEXT(vkCommandBuffer, 0, std::size(colorBlendEnables), colorBlendEnables);
+
+                    // TODO: look-up default OpenGL blend parameters
+                    VkColorBlendEquationEXT colorBlendEquations[]{
+                        VkColorBlendEquationEXT{
+                            .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+                            .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                            .colorBlendOp = VK_BLEND_OP_ADD,
+                            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+                            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                            .alphaBlendOp = VK_BLEND_OP_ADD,
+                        },
+                    };
+                    vkCmdSetColorBlendEquationEXT(vkCommandBuffer, 0, std::size(colorBlendEquations), colorBlendEquations);
+
+                    //// Non-indexed draw
+                    vkCmdDraw(vkCommandBuffer, 4, 1, 0, 0);
+
+                    vkCmdEndRendering(vkCommandBuffer);
+                }
 
                 // Transition to presentation layout
                 // > Before an application can present an image, the image’s layout must be transitioned to the VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
@@ -320,7 +490,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                 };
                 assertVkSuccess(vkQueuePresentKHR(vkQueue, &presentInfo));
 
-                // Trivial sync, to ensure that the active command buffer has completed
+                // Trivial sync, to ensure that the active command buffer has completed (not pending)
                 // before we call Begin on next frame.
                 assertVkSuccess(vkWaitForFences(vkDevice, 1, &submitFence, VK_TRUE, UINT64_MAX));
                 vkDestroyFence(vkDevice, submitFence, pAllocator);
@@ -333,6 +503,18 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     //
     // Vulkan clean-up
     //
+
+    // Shader objects
+    for(VkShaderEXT shader : vkShaderEXTs)
+    {
+        vkDestroyShaderEXT(vkDevice, shader, pAllocator);
+    }
+
+    // Image views
+    for(VkImageView imageView : renderImageViews)
+    {
+        vkDestroyImageView(vkDevice, imageView, pAllocator);
+    }
 
     // Semaphores
 

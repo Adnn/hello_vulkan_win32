@@ -271,9 +271,16 @@ VkDevice createDevice(VkInstance vkInstance,
     // TODO: assign priorities
     std::vector<float> queuePriorities(queueCount);
 
+    VkPhysicalDeviceShaderObjectFeaturesEXT physicalDeviceShaderObjectFeaturesEXT{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT,
+        .shaderObject = VK_TRUE,
+    };
+
     VkPhysicalDeviceVulkan13Features physicalDeviceVulkan13Features{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+        .pNext = &physicalDeviceShaderObjectFeaturesEXT,
         .synchronization2 = VK_TRUE,
+        .dynamicRendering = VK_TRUE,
     };
 
     VkDeviceQueueCreateInfo deviceQueueCreateInfo{
@@ -284,6 +291,7 @@ VkDevice createDevice(VkInstance vkInstance,
     };
 
     std::vector<const char *>enabledDeviceExtensionNames{
+        "VK_EXT_shader_object",
         "VK_KHR_swapchain",
     };
 
@@ -387,3 +395,6 @@ void nameObject(VkDevice vkDevice, T_handle aHandle, const char * aName)
     };
     vkSetDebugUtilsObjectNameEXT(vkDevice, &nameInfo);
 }
+
+#define NAME_VKOBJECT(object) nameObject(vkDevice, object, #object);
+#define NAME_VKOBJECT_IDX(object, index) nameObject(vkDevice, object, (#object + std::to_string(index)).c_str());
