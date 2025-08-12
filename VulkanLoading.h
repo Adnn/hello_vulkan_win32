@@ -53,6 +53,9 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkFreeCommandBuffers);
     D(vkBeginCommandBuffer);
     D(vkEndCommandBuffer);
+    D(vkCmdPipelineBarrier2);
+    D(vkCmdClearColorImage);
+    D(vkQueueWaitIdle);
     // VK_KHR_swapchain
     D(vkCreateSwapchainKHR);
     D(vkDestroySwapchainKHR);
@@ -140,6 +143,9 @@ void initializeForDevice(VkDevice aDevice)
     D(vkFreeCommandBuffers);
     D(vkBeginCommandBuffer);
     D(vkEndCommandBuffer);
+    D(vkCmdPipelineBarrier2);
+    D(vkCmdClearColorImage);
+    D(vkQueueWaitIdle);
 
     D(vkCreateSwapchainKHR);
     D(vkDestroySwapchainKHR);

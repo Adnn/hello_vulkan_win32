@@ -67,6 +67,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     };
     VkQueue vkQueue;
     vkGetDeviceQueue2(vkDevice, &deviceQueueInfo2, &vkQueue);
+    nameObject(vkDevice, vkQueue, "main_graphics");
 
     // Enumerate layers
     printEnumeratedLayers();
@@ -133,8 +134,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
         .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, // This is where we would HDR
         .imageExtent = vkSurfaceCapabilities.currentExtent,
         .imageArrayLayers = 1,
-        // Depth stencil attachment is not a valid usage (thank you validation layer)
-        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT /*| VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT*/,
+        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT 
+                      | VK_IMAGE_USAGE_TRANSFER_DST_BIT // notably required for clear command
+                      // Depth stencil attachment is not a valid usage (thank you validation layer)
+                      //| VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                      ,
         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, // treate the image as opaque when compositing
@@ -221,7 +225,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                                                       acquireSemaphore, acquireFence, &nextImageIndex));
 
                 // Use synchronization to ensure presentation engine reads have completed on the next image.
-
                 // TODO: Implement the recommended idiom via semaphore instead (from WSI Swapchain):
                 // > When the presentable image will be accessed by some stage S, the recommended idiom for ensuring correct synchronization is:
                 // TODO: can probably me moved to queue submission
@@ -234,11 +237,47 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                 };
                 assertVkSuccess(vkBeginCommandBuffer(vkCommandBuffer, &commandBufferBeginInfo));
 
-                // TODO: transition to a valid layout
+                VkImageSubresourceRange swapchainImageFullRange{
+                    // When aspectMask is not included, there is a bug/typo in the validation layer
+                    // (the path is missing the subresourceRange stage)
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .levelCount = VK_REMAINING_MIP_LEVELS,
+                    .layerCount = VK_REMAINING_ARRAY_LAYERS,
+                };
+
+                // Transition to general layout (initializing from undefined layout)
                 // > All presentable images are initially in the VK_IMAGE_LAYOUT_UNDEFINED layout, thus before using presentable images, 
                 // > the application must transition them to a valid layout for the intended use.
+                VkImageMemoryBarrier2 imageMemoryBarrier2{
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                    .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                    .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+                    .image = swapchainImages[nextImageIndex],
+                    .subresourceRange = swapchainImageFullRange,
+                };
+                VkDependencyInfo dependencyInfo{
+                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                    .imageMemoryBarrierCount = 1,
+                    .pImageMemoryBarriers  = &imageMemoryBarrier2,
+                };
+                vkCmdPipelineBarrier2(vkCommandBuffer, &dependencyInfo);
 
-                //vkCmd*
+                // Clear color image
+                VkClearColorValue clearColor{
+                    .float32{0.0f, 0.2f, 0.0f, 1.0f},
+                };
+                vkCmdClearColorImage(vkCommandBuffer,
+                                     swapchainImages[nextImageIndex],
+                                     VK_IMAGE_LAYOUT_GENERAL,
+                                     &clearColor,
+                                     1,
+                                     &swapchainImageFullRange);
+
+                // Transition to presentation layout
+                // > Before an application can present an image, the image’s layout must be transitioned to the VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+                imageMemoryBarrier2.oldLayout = imageMemoryBarrier2.newLayout;
+                imageMemoryBarrier2.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+                vkCmdPipelineBarrier2(vkCommandBuffer, &dependencyInfo);
 
                 // Move CB to executable state
                 assertVkSuccess(vkEndCommandBuffer(vkCommandBuffer));
@@ -268,10 +307,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 
                 // Present the next image 
 
-                // TODO: use sync to ensure all commands in the specified queue completed before presentation begins
+                // Note: signalSubmitSemaphores address the requirement below:
                 // >  semaphores must be used to ensure that prior rendering and other commands in the specified queue complete before the presentation begins.
-                // TODO: transition to present layout 
-                // > Before an application can present an image, the image’s layout must be transitioned to the VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
                 VkPresentInfoKHR presentInfo{
                     .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
                     .waitSemaphoreCount = 1,
@@ -282,8 +319,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                     .pResults = NULL, // TODO: would it provide more info in the single swapchain situation?
                 };
                 assertVkSuccess(vkQueuePresentKHR(vkQueue, &presentInfo));
-
-                //once = false;
 
                 // silly sync
                 // TODO: make it better
@@ -299,7 +334,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     // Vulkan clean-up
     //
 
-    // semaphore
+    // Semaphores
+
+    // Wait for all queue submission command have completed,
+    // guaranteeing the submit-semaphore have been signaled and can be destroyed
+    vkQueueWaitIdle(vkQueue);
     for(VkSemaphore semaphore : signalSubmitSemaphores)
     {
         vkDestroySemaphore(vkDevice, semaphore, pAllocator);
