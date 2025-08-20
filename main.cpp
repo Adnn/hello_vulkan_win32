@@ -247,7 +247,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 
     // Create shader objects
     std::vector<char> vertexCode = readFile("shaders/spirv/Forward.vert.spv");
-    std::vector<char> fragmentCode = readFile("shaders/spirv/Yellow.frag.spv");
+    std::vector<char> fragmentCode = readFile("shaders/spirv/Color.frag.spv");
 
     VkShaderCreateInfoEXT shaderCreateInfoEXTs[]{
         VkShaderCreateInfoEXT{
@@ -388,7 +388,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 
                 // Clear color image
                 VkClearColorValue clearColor{
-                    .float32{0.0f, 0.2f, 0.0f, 1.0f},
+                    .float32{0.1f, 0.1f, 0.1f, 1.0f},
                 };
                 vkCmdClearColorImage(vkCommandBuffer,
                                      nextImage,
@@ -447,6 +447,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                     //  - vkCmdBindVertexBuffers()
 
                     // Vertex shader input from buffers
+                    // Describe the single binding, used by both interleaved attributes
                     VkVertexInputBindingDescription2EXT vertexInputBindingDescriptions[]{
                         {
                             .sType = VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT,
@@ -456,6 +457,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                             .divisor = 1,
                         },
                     };
+                    // Describes both attributes that will be pulled from the single binding
                     VkVertexInputAttributeDescription2EXT vertexInputAttributeDescription[]{
                         {
                             .sType = VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT,
@@ -463,6 +465,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                             .binding = 1,
                             .format = VK_FORMAT_R32G32B32_SFLOAT,
                             .offset = 0,
+                        },
+                        {
+                            .sType = VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT,
+                            .location = 2,
+                            .binding = 1,
+                            .format = VK_FORMAT_R32G32B32_SFLOAT,
+                            .offset = offsetof(Vertex, mColor),
                         },
                     };
                     vkCmdSetVertexInputEXT(vkCommandBuffer,
