@@ -8,6 +8,10 @@
 #include "VulkanHelpers.h"
 #include "WindowsHelpers.h"
 
+// Included to get the to_string() functions
+// Note: cannot include vulkan_to_string directly, there is a circular dependency issue
+#include <vulkan/vulkan.hpp>
+
 #include <windows.h>
 
 #include <iostream>
@@ -17,6 +21,14 @@
 
 VkInstance vkInstance;
 VkDevice vkDevice;
+
+struct Swapchain
+{
+    VkSwapchainKHR vkSwapchain;
+    VkExtent2D imageExtent;
+    std::vector<VkImage> swapchainImages;
+    std::vector<VkImageView> renderImageViews;
+};
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
@@ -151,42 +163,94 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     VkSurfaceKHR vkSurface;
     vkCreateWin32SurfaceKHR(vkInstance, &win32SurfaceCreateInfoKHR, pAllocator, &vkSurface);
 
-    // Create swapchain
-    VkSurfaceCapabilitiesKHR vkSurfaceCapabilities;
-    assertVkSuccess(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkPhysicalDevice, vkSurface, &vkSurfaceCapabilities));
-    // TODO: ensure the capabilities we are using are indeed available in vkSurfaceCapabilities.
+    // Query supported swapchain format-colorspace pairs
+    // see: https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html#vkGetPhysicalDeviceSurfaceFormatsKHR
+    uint32_t surfaceFormatCount = 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(vkPhysicalDevice, vkSurface, &surfaceFormatCount, NULL);
+    std::vector<VkSurfaceFormatKHR> surfaceFormats(surfaceFormatCount);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(vkPhysicalDevice, vkSurface, &surfaceFormatCount, surfaceFormats.data());
+    std::cout << "Supported surface formats:";
+    for(std::size_t idx = 0; idx != surfaceFormatCount; ++idx)
+    {
+        std::cout << "\n\t- " 
+                  << vk::to_string(vk::Format{surfaceFormats[idx].format}) << " / " 
+                  << vk::to_string(vk::ColorSpaceKHR(surfaceFormats[idx].colorSpace))
+                  ;
+    }
+    std::cout << "\n\n";
+    
+    const VkFormat queueImageFormat = VK_FORMAT_R8G8B8A8_SRGB;
 
-    //TODO: we should compare to a tutorial, there is so much here
-    VkSwapchainCreateInfoKHR swapchainCreateInfoKHR{
-        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = vkSurface,
-        .minImageCount = 2, // Double-buffering, I guess requires 2
-        .imageFormat = VK_FORMAT_B8G8R8A8_SRGB, // Really, I am guessing at this point
-        .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, // This is where we would HDR
-        .imageExtent = vkSurfaceCapabilities.currentExtent,
-        .imageArrayLayers = 1,
-        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT 
-                      | VK_IMAGE_USAGE_TRANSFER_DST_BIT // notably required for clear command
-                      // Depth stencil attachment is not a valid usage (thank you validation layer)
-                      //| VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                      ,
-        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, // treate the image as opaque when compositing
-        .presentMode = VK_PRESENT_MODE_FIFO_KHR, // TODO: can we do better? This is the only required mode
-        .clipped = VK_FALSE, // let's be safe ATM
-        .oldSwapchain = VK_NULL_HANDLE,
+    // Prepare image view for each image in the swapchain
+    VkImageSubresourceRange swapchainImageFullRange{
+        // When aspectMask is not included, there is a bug/typo in the validation layer
+        // (the path is missing the subresourceRange stage)
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .levelCount = VK_REMAINING_MIP_LEVELS,
+        .layerCount = VK_REMAINING_ARRAY_LAYERS,
     };
-    VkSwapchainKHR vkSwapchain;
-    assertVkSuccess(vkCreateSwapchainKHR(vkDevice, &swapchainCreateInfoKHR, pAllocator, &vkSwapchain));
 
-    // Get swapchain images. They are fully backed by memory.
-    uint32_t swapchainImageCount;
-    vkGetSwapchainImagesKHR(vkDevice, vkSwapchain, &swapchainImageCount, nullptr);
-    std::vector<VkImage> swapchainImages(swapchainImageCount);
-    assertVkSuccess(vkGetSwapchainImagesKHR(vkDevice, vkSwapchain, &swapchainImageCount, swapchainImages.data()));
-    std::cout << "Swapchain has " << swapchainImageCount << " images.\n\n";
+    // Create swapchain
+    auto prepareSwapchain = [swapchainImageFullRange](VkPhysicalDevice vkPhysicalDevice,
+                                                      VkSurfaceKHR vkSurface,
+                                                      VkFormat queueImageFormat) -> Swapchain
+    {
+        VkSurfaceCapabilitiesKHR vkSurfaceCapabilities;
+        assertVkSuccess(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkPhysicalDevice, vkSurface, &vkSurfaceCapabilities));
+        // TODO: ensure the capabilities we are using are indeed available in vkSurfaceCapabilities.
 
+        Swapchain result{
+            .imageExtent = vkSurfaceCapabilities.currentExtent,
+        };
+
+        //TODO: we should compare to a tutorial, there is so much here
+        VkSwapchainCreateInfoKHR swapchainCreateInfoKHR{
+            .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+            .surface = vkSurface,
+            .minImageCount = 2, // Double-buffering, I guess requires 2
+            .imageFormat = queueImageFormat,
+            .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, // This is where we would HDR
+            .imageExtent = result.imageExtent,
+            .imageArrayLayers = 1,
+            .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT 
+                        | VK_IMAGE_USAGE_TRANSFER_DST_BIT // notably required for clear command
+                        // Depth stencil attachment is not a valid usage (thank you validation layer)
+                        //| VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                        ,
+            .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+            .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, // treate the image as opaque when compositing
+            .presentMode = VK_PRESENT_MODE_FIFO_KHR, // TODO: can we do better? This is the only required mode
+            .clipped = VK_FALSE, // let's be safe ATM
+            .oldSwapchain = VK_NULL_HANDLE,
+        };
+        assertVkSuccess(vkCreateSwapchainKHR(vkDevice, &swapchainCreateInfoKHR, pAllocator, &result.vkSwapchain));
+
+        // Get swapchain images. They are fully backed by memory.
+        uint32_t swapchainImageCount;
+        vkGetSwapchainImagesKHR(vkDevice, result.vkSwapchain, &swapchainImageCount, nullptr);
+        result.swapchainImages = std::vector<VkImage>(swapchainImageCount);
+        assertVkSuccess(vkGetSwapchainImagesKHR(vkDevice, result.vkSwapchain, &swapchainImageCount, result.swapchainImages.data()));
+        std::cout << "Swapchain has " << swapchainImageCount << " images.\n\n";
+
+        result.renderImageViews = std::vector<VkImageView>(swapchainImageCount);
+        VkImageViewCreateInfo imageViewCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = queueImageFormat,
+            .subresourceRange = swapchainImageFullRange,
+        };
+        for(std::size_t imageIdx= 0; imageIdx != swapchainImageCount; ++imageIdx)
+        {
+            imageViewCreateInfo.image = result.swapchainImages[imageIdx],
+            assertVkSuccess(
+                vkCreateImageView(vkDevice, &imageViewCreateInfo, pAllocator, &result.renderImageViews[imageIdx]));
+            NAME_VKOBJECT_IDX(result.renderImageViews[imageIdx], imageIdx);
+        }
+
+        return result;
+    };
+    Swapchain swapchain = prepareSwapchain(vkPhysicalDevice, vkSurface, queueImageFormat);
 
     //
     // Prepare the commande buffer and all objects required by per-frame operations
@@ -210,39 +274,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 
     // Create semaphores to signal queue completion to image presentation
     // Per-image, otherwise might infringe on VUID-vkQueueSubmit2-semaphore-03868
-    std::vector<VkSemaphore> signalSubmitSemaphores(swapchainImageCount);
+    std::vector<VkSemaphore> signalSubmitSemaphores(swapchain.swapchainImages.size());
     VkSemaphoreCreateInfo semaphoreCreateInfo{
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
     };
-    for(std::size_t semaphoreIdx= 0; semaphoreIdx != swapchainImageCount; ++semaphoreIdx)
+    for(std::size_t semaphoreIdx= 0; semaphoreIdx != swapchain.swapchainImages.size(); ++semaphoreIdx)
     {
         assertVkSuccess(
             vkCreateSemaphore(vkDevice, &semaphoreCreateInfo, pAllocator, &signalSubmitSemaphores[semaphoreIdx]));
         nameObject(vkDevice, signalSubmitSemaphores[semaphoreIdx],
                    ("signal_QueueSubmit_" + std::to_string(semaphoreIdx)).c_str());
-    }
-
-    VkImageSubresourceRange swapchainImageFullRange{
-        // When aspectMask is not included, there is a bug/typo in the validation layer
-        // (the path is missing the subresourceRange stage)
-        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .levelCount = VK_REMAINING_MIP_LEVELS,
-        .layerCount = VK_REMAINING_ARRAY_LAYERS,
-    };
-
-    std::vector<VkImageView> renderImageViews(swapchainImageCount);
-    VkImageViewCreateInfo imageViewCreateInfo{
-        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .viewType = VK_IMAGE_VIEW_TYPE_2D,
-        .format = VK_FORMAT_B8G8R8A8_SRGB,
-        .subresourceRange = swapchainImageFullRange,
-    };
-    for(std::size_t imageIdx= 0; imageIdx != swapchainImageCount; ++imageIdx)
-    {
-        imageViewCreateInfo.image = swapchainImages[imageIdx],
-        assertVkSuccess(
-            vkCreateImageView(vkDevice, &imageViewCreateInfo, pAllocator, &renderImageViews[imageIdx]));
-        NAME_VKOBJECT_IDX(renderImageViews[imageIdx], imageIdx);
     }
 
     // Create shader objects
@@ -351,10 +392,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 
                 uint32_t nextImageIndex;
                 // TODO: handle window resize (VK_ERROR_OUT_OF_DATE_KHR?)
-                assertVkSuccess(vkAcquireNextImageKHR(vkDevice, vkSwapchain, UINT64_MAX/*treated as infinite timeout, 0 would mean not wait allowed*/,
+                assertVkSuccess(vkAcquireNextImageKHR(vkDevice, swapchain.vkSwapchain, UINT64_MAX/*treated as infinite timeout, 0 would mean not wait allowed*/,
                                                       acquireSemaphore, acquireFence, &nextImageIndex));
 
-                VkImage nextImage = swapchainImages[nextImageIndex];
+                VkImage nextImage = swapchain.swapchainImages[nextImageIndex];
 
                 // Use synchronization to ensure presentation engine reads have completed on the next image.
                 // TODO: Implement the recommended idiom via semaphore instead (from WSI Swapchain):
@@ -401,14 +442,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                 {
                     VkRenderingAttachmentInfo renderingColorAttachmentInfo{
                         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                        .imageView = renderImageViews[nextImageIndex],
+                        .imageView = swapchain.renderImageViews[nextImageIndex],
                         .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
                     };
                     VkRenderingInfo renderingInfo{
                         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
                         .renderArea = VkRect2D{
                             .offset = VkOffset2D{0, 0},
-                            .extent = vkSurfaceCapabilities.currentExtent,
+                            .extent = swapchain.imageExtent,
                         },
                         .layerCount = 1,
                         .colorAttachmentCount = 1,
@@ -424,7 +465,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                     vkCmdBindShadersEXT(vkCommandBuffer, shaderCount, stageBits, vkShaderEXTs.data());
 
                     // Very explicit required state
-                    setDynamicPipelineState(vkCommandBuffer, vkSurfaceCapabilities.currentExtent);
+                    setDynamicPipelineState(vkCommandBuffer, swapchain.imageExtent);
 
                     // Vertex Attributes
 
@@ -529,7 +570,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                     .waitSemaphoreCount = 1,
                     .pWaitSemaphores = &signalSubmitSemaphores[nextImageIndex],
                     .swapchainCount = 1,
-                    .pSwapchains = &vkSwapchain,
+                    .pSwapchains = &swapchain.vkSwapchain,
                     .pImageIndices = &nextImageIndex,
                     .pResults = NULL, // TODO: would it provide more info in the single swapchain situation?
                 };
@@ -560,7 +601,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     }
 
     // Image views
-    for(VkImageView imageView : renderImageViews)
+    for(VkImageView imageView : swapchain.renderImageViews)
     {
         vkDestroyImageView(vkDevice, imageView, pAllocator);
     }
@@ -580,7 +621,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     vkDestroyCommandPool(vkDevice, vkCommandPool, pAllocator);
 
     // Swapchain and surface
-    vkDestroySwapchainKHR(vkDevice, vkSwapchain, pAllocator);
+    vkDestroySwapchainKHR(vkDevice, swapchain.vkSwapchain, pAllocator);
     vkDestroySurfaceKHR(vkInstance, vkSurface, pAllocator);
     // Device
     assertVkSuccess(vkDeviceWaitIdle(vkDevice));

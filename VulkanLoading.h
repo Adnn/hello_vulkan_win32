@@ -34,6 +34,7 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
     // VK_KHR_surface
     D(vkDestroySurfaceKHR);
+    D(vkGetPhysicalDeviceSurfaceFormatsKHR);
     // VK_KHR_win32_surface
     D(vkCreateWin32SurfaceKHR);
 
@@ -167,6 +168,7 @@ void initializeForInstance(VkInstance aInstance)
     D(vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
 
     D(vkDestroySurfaceKHR);
+    D(vkGetPhysicalDeviceSurfaceFormatsKHR);
 
     D(vkCreateWin32SurfaceKHR);
 
