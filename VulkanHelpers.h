@@ -353,6 +353,7 @@ void setDynamicPipelineState(VkCommandBuffer vkCommandBuffer, VkExtent2D aSurfac
 
     vkCmdSetRasterizerDiscardEnable(vkCommandBuffer, VK_FALSE);
 
+    // No vertex shader input
     vkCmdSetVertexInputEXT(vkCommandBuffer, 0, nullptr, 0, nullptr);
 
     vkCmdSetPrimitiveTopology(vkCommandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);

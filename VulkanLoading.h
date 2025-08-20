@@ -28,6 +28,7 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkEnumeratePhysicalDevices);
     D(vkGetPhysicalDeviceProperties2);
     D(vkGetPhysicalDeviceFeatures2);
+    D(vkGetPhysicalDeviceMemoryProperties2);
     D(vkGetPhysicalDeviceQueueFamilyProperties2);
     D(vkCreateDevice);
     D(vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
@@ -64,7 +65,6 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkCmdSetViewportWithCount);
     D(vkCmdSetScissorWithCount);
     D(vkCmdSetRasterizerDiscardEnable);
-    D(vkCmdSetVertexInputEXT);
     D(vkCmdSetPrimitiveTopology);
     D(vkCmdSetPrimitiveRestartEnable);
     D(vkCmdSetRasterizationSamplesEXT);
@@ -94,6 +94,14 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkCmdSetColorBlendEnableEXT);
     D(vkCmdSetColorBlendEquationEXT);
     D(vkCmdSetBlendConstants);
+    D(vkCreateBuffer);
+    D(vkDestroyBuffer);
+    D(vkAllocateMemory);
+    D(vkFreeMemory);
+    D(vkGetBufferMemoryRequirements);
+    D(vkBindBufferMemory);
+    D(vkMapMemory);
+    D(vkUnmapMemory);
 
     // VK_KHR_swapchain
     D(vkCreateSwapchainKHR);
@@ -108,6 +116,8 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkCreateShadersEXT);
     D(vkDestroyShaderEXT);
     D(vkCmdBindShadersEXT);
+    D(vkCmdSetVertexInputEXT);
+    D(vkCmdBindVertexBuffers);
 #undef D
 
 
@@ -151,6 +161,7 @@ void initializeForInstance(VkInstance aInstance)
     D(vkEnumeratePhysicalDevices);
     D(vkGetPhysicalDeviceProperties2);
     D(vkGetPhysicalDeviceFeatures2);
+    D(vkGetPhysicalDeviceMemoryProperties2);
     D(vkGetPhysicalDeviceQueueFamilyProperties2);
     D(vkCreateDevice);
     D(vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
@@ -196,7 +207,6 @@ void initializeForDevice(VkDevice aDevice)
     D(vkCmdSetViewportWithCount);
     D(vkCmdSetScissorWithCount);
     D(vkCmdSetRasterizerDiscardEnable);
-    D(vkCmdSetVertexInputEXT);
     D(vkCmdSetPrimitiveTopology);
     D(vkCmdSetPrimitiveRestartEnable);
     D(vkCmdSetRasterizationSamplesEXT);
@@ -226,6 +236,14 @@ void initializeForDevice(VkDevice aDevice)
     D(vkCmdSetColorBlendEnableEXT);
     D(vkCmdSetColorBlendEquationEXT);
     D(vkCmdSetBlendConstants);
+    D(vkCreateBuffer);
+    D(vkDestroyBuffer);
+    D(vkAllocateMemory);
+    D(vkFreeMemory);
+    D(vkGetBufferMemoryRequirements);
+    D(vkBindBufferMemory);
+    D(vkMapMemory);
+    D(vkUnmapMemory);
 
     D(vkCreateSwapchainKHR);
     D(vkDestroySwapchainKHR);
@@ -239,5 +257,7 @@ void initializeForDevice(VkDevice aDevice)
     D(vkCreateShadersEXT);
     D(vkDestroyShaderEXT);
     D(vkCmdBindShadersEXT);
+    D(vkCmdSetVertexInputEXT);
+    D(vkCmdBindVertexBuffers);
 #undef D
 }
