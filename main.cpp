@@ -24,10 +24,24 @@ VkDevice vkDevice;
 
 struct Swapchain
 {
+    // TODO: replace with a Dtor
+    void destroy()
+    {
+        // Image views
+        for(VkImageView imageView : renderImageViews)
+        {
+            vkDestroyImageView(vkDevice, imageView, pAllocator);
+        }
+        // Swapchain
+        vkDestroySwapchainKHR(vkDevice, vkSwapchain, pAllocator);
+    }
+
+    VkDevice vkDevice; // required for Dtor
     VkSwapchainKHR vkSwapchain;
     VkExtent2D imageExtent;
     std::vector<VkImage> swapchainImages;
     std::vector<VkImageView> renderImageViews;
+    bool mOutOfDate{true};
 };
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -193,14 +207,17 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     // Create swapchain
     auto prepareSwapchain = [swapchainImageFullRange](VkPhysicalDevice vkPhysicalDevice,
                                                       VkSurfaceKHR vkSurface,
-                                                      VkFormat queueImageFormat) -> Swapchain
+                                                      VkFormat queueImageFormat,
+                                                      VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE) -> Swapchain
     {
         VkSurfaceCapabilitiesKHR vkSurfaceCapabilities;
         assertVkSuccess(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkPhysicalDevice, vkSurface, &vkSurfaceCapabilities));
         // TODO: ensure the capabilities we are using are indeed available in vkSurfaceCapabilities.
 
         Swapchain result{
+            .vkDevice = vkDevice,
             .imageExtent = vkSurfaceCapabilities.currentExtent,
+            .mOutOfDate = false,
         };
 
         //TODO: we should compare to a tutorial, there is so much here
@@ -222,13 +239,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
             .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, // treate the image as opaque when compositing
             .presentMode = VK_PRESENT_MODE_FIFO_KHR, // TODO: can we do better? This is the only required mode
             .clipped = VK_FALSE, // let's be safe ATM
-            .oldSwapchain = VK_NULL_HANDLE,
+            .oldSwapchain = oldSwapchain,
         };
         assertVkSuccess(vkCreateSwapchainKHR(vkDevice, &swapchainCreateInfoKHR, pAllocator, &result.vkSwapchain));
 
         // Get swapchain images. They are fully backed by memory.
         uint32_t swapchainImageCount;
-        vkGetSwapchainImagesKHR(vkDevice, result.vkSwapchain, &swapchainImageCount, nullptr);
+        assertVkSuccess(vkGetSwapchainImagesKHR(vkDevice, result.vkSwapchain, &swapchainImageCount, nullptr));
         result.swapchainImages = std::vector<VkImage>(swapchainImageCount);
         assertVkSuccess(vkGetSwapchainImagesKHR(vkDevice, result.vkSwapchain, &swapchainImageCount, result.swapchainImages.data()));
         std::cout << "Swapchain has " << swapchainImageCount << " images.\n\n";
@@ -380,6 +397,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
             }
             else 
             {
+                // Notably handle window resizing
+                if(swapchain.mOutOfDate)
+                {
+                    // Wait until all queue submission commands have completed,
+                    // guaranteeing the submit-semaphore have been signaled
+                    assertVkSuccess(vkQueueWaitIdle(vkQueue));
+                    swapchain.destroy();
+                    swapchain = prepareSwapchain(vkPhysicalDevice, vkSurface, queueImageFormat/*, swapchain.vkSwapchain*/);
+                }
+
                 // 
                 // TICK
                 //
@@ -574,7 +601,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                     .pImageIndices = &nextImageIndex,
                     .pResults = NULL, // TODO: would it provide more info in the single swapchain situation?
                 };
-                assertVkSuccess(vkQueuePresentKHR(vkQueue, &presentInfo));
+                VkResult result = vkQueuePresentKHR(vkQueue, &presentInfo);
+                if(result == VK_ERROR_OUT_OF_DATE_KHR)
+                {
+                    swapchain.mOutOfDate = true;
+                }
+                else
+                {
+                    assertVkSuccess(result);
+                }
 
                 // Trivial sync, to ensure that the active command buffer has completed (not pending)
                 // before we call Begin on next frame.
@@ -600,17 +635,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
         vkDestroyShaderEXT(vkDevice, shader, pAllocator);
     }
 
-    // Image views
-    for(VkImageView imageView : swapchain.renderImageViews)
-    {
-        vkDestroyImageView(vkDevice, imageView, pAllocator);
-    }
-
     // Semaphores
-
-    // Wait for all queue submission command have completed,
-    // guaranteeing the submit-semaphore have been signaled and can be destroyed
-    vkQueueWaitIdle(vkQueue);
+    assertVkSuccess(vkQueueWaitIdle(vkQueue));
     for(VkSemaphore semaphore : signalSubmitSemaphores)
     {
         vkDestroySemaphore(vkDevice, semaphore, pAllocator);
@@ -621,8 +647,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     vkDestroyCommandPool(vkDevice, vkCommandPool, pAllocator);
 
     // Swapchain and surface
-    vkDestroySwapchainKHR(vkDevice, swapchain.vkSwapchain, pAllocator);
+    swapchain.destroy();
     vkDestroySurfaceKHR(vkInstance, vkSurface, pAllocator);
+
     // Device
     assertVkSuccess(vkDeviceWaitIdle(vkDevice));
     vkDestroyDevice(vkDevice, pAllocator);
