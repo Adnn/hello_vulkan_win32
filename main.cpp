@@ -377,6 +377,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
         std::memcpy(vertexDataMap, gTriangle.data(), vertexDataSize);
         vkUnmapMemory(vkDevice, vkVertexDeviceMemory);
         // No need to call vkFlushMappedMemoryRanges() since we picked coherent memory
+
+        // Note: afaiu, host writes to mappable device memory are made available to all memory accesses performed by the device
+        // in commands from a subsequent queue submission.
+        // see access scope in: https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-submission-host-writes
     }
 
     //

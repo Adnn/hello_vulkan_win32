@@ -55,3 +55,4 @@ Thumbs.db
 ipch
 # In this simple project, we do want to share the vscode config
 #.vscode
+.vscode/settings.json
