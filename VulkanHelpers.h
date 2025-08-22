@@ -3,6 +3,10 @@
 
 #include "VulkanLoading.h"
 
+// Included to get the to_string() functions
+// Note: cannot include vulkan_to_string directly, there is a circular dependency issue
+#include <vulkan/vulkan.hpp>
+
 #include <format>
 #include <sstream>
 #include <iomanip>
@@ -13,7 +17,39 @@
 #include <cassert>
 
 
-static VkAllocationCallbacks * const pAllocator = nullptr;
+VkAllocationCallbacks * const pAllocator = nullptr;
+
+const VkImageSubresourceRange gSwapchainImageFullRange{
+    // When aspectMask is not included, there is a bug/typo in the validation layer
+    // (the path is missing the subresourceRange stage)
+    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+    .levelCount = VK_REMAINING_MIP_LEVELS,
+    .layerCount = VK_REMAINING_ARRAY_LAYERS,
+};
+
+
+struct Swapchain
+{
+    // TODO: replace with a Dtor
+    void destroy()
+    {
+        // Image views
+        for(VkImageView imageView : renderImageViews)
+        {
+            vkDestroyImageView(vkDevice, imageView, pAllocator);
+        }
+        // Swapchain
+        vkDestroySwapchainKHR(vkDevice, vkSwapchain, pAllocator);
+    }
+
+    VkDevice vkDevice; // required for Dtor
+    VkSwapchainKHR vkSwapchain;
+    VkExtent2D imageExtent;
+    std::vector<VkImage> swapchainImages;
+    std::vector<VkImageView> renderImageViews;
+    bool mOutOfDate{true};
+};
+
 
 // To be extended with logging of specific errors
 void assertVkSuccess(VkResult aResult)
@@ -82,11 +118,11 @@ VkBool32 VKAPI_PTR debugReportCallback(
     const char*                                 pMessage,
     void*                                       pUserData)
 {
-    std::cerr << "(debug_report) " 
-        << "[" << toString_debugReportFlagBits(flags) << "] "
-        << pLayerPrefix << ": " << pMessage
-        << "\n"
-        ;
+    //std::cerr << "(debug_report) " 
+    //    << "[" << toString_debugReportFlagBits(flags) << "] "
+    //    << pLayerPrefix << ": " << pMessage
+    //    << "\n"
+    //    ;
     return VK_FALSE; // Vulkan API requirement
 }
 
@@ -101,6 +137,84 @@ std::string toString_version(uint32_t aVersion)
     return oss.str();
 }
 
+
+template <class T_handle>
+constexpr VkObjectType getObjectType()
+{
+#define MAP(objectType, handleType) \
+    else if(std::is_same_v<T_handle, handleType>) return objectType
+
+    if constexpr(std::is_same_v<T_handle, VkInstance>) return VK_OBJECT_TYPE_INSTANCE;
+    MAP(VK_OBJECT_TYPE_INSTANCE, VkInstance);
+    MAP(VK_OBJECT_TYPE_PHYSICAL_DEVICE, VkPhysicalDevice);
+    MAP(VK_OBJECT_TYPE_DEVICE, VkDevice);
+    MAP(VK_OBJECT_TYPE_QUEUE, VkQueue);
+    MAP(VK_OBJECT_TYPE_SEMAPHORE, VkSemaphore);
+    MAP(VK_OBJECT_TYPE_COMMAND_BUFFER, VkCommandBuffer);
+    MAP(VK_OBJECT_TYPE_FENCE, VkFence);
+    MAP(VK_OBJECT_TYPE_DEVICE_MEMORY, VkDeviceMemory);
+    MAP(VK_OBJECT_TYPE_BUFFER, VkBuffer);
+    MAP(VK_OBJECT_TYPE_IMAGE, VkImage);
+    MAP(VK_OBJECT_TYPE_EVENT, VkEvent);
+    MAP(VK_OBJECT_TYPE_QUERY_POOL, VkQueryPool);
+    MAP(VK_OBJECT_TYPE_BUFFER_VIEW, VkBufferView);
+    MAP(VK_OBJECT_TYPE_IMAGE_VIEW, VkImageView);
+    MAP(VK_OBJECT_TYPE_SHADER_MODULE, VkShaderModule);
+    MAP(VK_OBJECT_TYPE_PIPELINE_CACHE, VkPipelineCache);
+    MAP(VK_OBJECT_TYPE_PIPELINE_LAYOUT, VkPipelineLayout);
+    MAP(VK_OBJECT_TYPE_RENDER_PASS, VkRenderPass);
+    MAP(VK_OBJECT_TYPE_PIPELINE, VkPipeline);
+    MAP(VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout);
+    MAP(VK_OBJECT_TYPE_SAMPLER, VkSampler);
+    MAP(VK_OBJECT_TYPE_DESCRIPTOR_POOL, VkDescriptorPool);
+    MAP(VK_OBJECT_TYPE_DESCRIPTOR_SET, VkDescriptorSet);
+    MAP(VK_OBJECT_TYPE_FRAMEBUFFER, VkFramebuffer);
+    MAP(VK_OBJECT_TYPE_COMMAND_POOL, VkCommandPool);
+    MAP(VK_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION, VkSamplerYcbcrConversion);
+    MAP(VK_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE, VkDescriptorUpdateTemplate);
+    MAP(VK_OBJECT_TYPE_PRIVATE_DATA_SLOT, VkPrivateDataSlot);
+    MAP(VK_OBJECT_TYPE_SURFACE_KHR, VkSurfaceKHR);
+    MAP(VK_OBJECT_TYPE_SWAPCHAIN_KHR, VkSwapchainKHR);
+    MAP(VK_OBJECT_TYPE_DISPLAY_KHR, VkDisplayKHR);
+    MAP(VK_OBJECT_TYPE_DISPLAY_MODE_KHR, VkDisplayModeKHR);
+    MAP(VK_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT, VkDebugReportCallbackEXT);
+    MAP(VK_OBJECT_TYPE_VIDEO_SESSION_KHR, VkVideoSessionKHR);
+    MAP(VK_OBJECT_TYPE_VIDEO_SESSION_PARAMETERS_KHR, VkVideoSessionParametersKHR);
+    MAP(VK_OBJECT_TYPE_DEBUG_UTILS_MESSENGER_EXT, VkDebugUtilsMessengerEXT);
+    MAP(VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR, VkAccelerationStructureKHR);
+    MAP(VK_OBJECT_TYPE_VALIDATION_CACHE_EXT, VkValidationCacheEXT);
+    MAP(VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV, VkAccelerationStructureNV);
+    MAP(VK_OBJECT_TYPE_PERFORMANCE_CONFIGURATION_INTEL, VkPerformanceConfigurationINTEL);
+    MAP(VK_OBJECT_TYPE_DEFERRED_OPERATION_KHR, VkDeferredOperationKHR);
+    MAP(VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV, VkIndirectCommandsLayoutNV);
+    MAP(VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_EXT, VkIndirectCommandsLayoutEXT);
+    MAP(VK_OBJECT_TYPE_INDIRECT_EXECUTION_SET_EXT, VkIndirectExecutionSetEXT);
+    //MAP(VK_OBJECT_TYPE_BUFFER_COLLECTION_FUCHSIA, VkBufferCollectionFUCHSIA);
+    MAP(VK_OBJECT_TYPE_MICROMAP_EXT, VkMicromapEXT);
+    MAP(VK_OBJECT_TYPE_OPTICAL_FLOW_SESSION_NV, VkOpticalFlowSessionNV);
+    MAP(VK_OBJECT_TYPE_SHADER_EXT, VkShaderEXT);
+    MAP(VK_OBJECT_TYPE_TENSOR_ARM, VkTensorARM);
+    MAP(VK_OBJECT_TYPE_TENSOR_VIEW_ARM, VkTensorViewARM);
+    MAP(VK_OBJECT_TYPE_DATA_GRAPH_PIPELINE_SESSION_ARM, VkDataGraphPipelineSessionARM);
+    else return VK_OBJECT_TYPE_UNKNOWN;
+
+#undef MAP
+}
+
+template <class T_handle>
+void nameObject(VkDevice vkDevice, T_handle aHandle, const char * aName)
+{
+    VkDebugUtilsObjectNameInfoEXT  nameInfo{
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = getObjectType<T_handle>(),
+        .objectHandle = reinterpret_cast<uint64_t>(aHandle),
+        .pObjectName = aName,
+    };
+    vkSetDebugUtilsObjectNameEXT(vkDevice, &nameInfo);
+}
+
+#define NAME_VKOBJECT(object) nameObject(vkDevice, object, #object);
+#define NAME_VKOBJECT_IDX(object, index) nameObject(vkDevice, object, (#object + std::to_string(index)).c_str());
 
 VkInstance createInstance(const char * aAppName, const uint32_t aRequestedApiVersion)
 {
@@ -321,6 +435,163 @@ VkFence createFence(VkDevice vkDevice)
 }
 
 
+void printSupportedSurfaceFormat(VkPhysicalDevice vkPhysicalDevice, VkSurfaceKHR vkSurface)
+{
+    // Query supported swapchain format-colorspace pairs
+    // see: https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html#vkGetPhysicalDeviceSurfaceFormatsKHR
+    uint32_t surfaceFormatCount = 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(vkPhysicalDevice, vkSurface, &surfaceFormatCount, NULL);
+    std::vector<VkSurfaceFormatKHR> surfaceFormats(surfaceFormatCount);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(vkPhysicalDevice, vkSurface, &surfaceFormatCount, surfaceFormats.data());
+    std::cout << "Supported surface formats:";
+    for(std::size_t idx = 0; idx != surfaceFormatCount; ++idx)
+    {
+        std::cout << "\n\t- " 
+                  << vk::to_string(vk::Format{surfaceFormats[idx].format}) << " / " 
+                  << vk::to_string(vk::ColorSpaceKHR(surfaceFormats[idx].colorSpace))
+                  ;
+    }
+    std::cout << "\n\n";
+}
+
+    
+std::vector<VkShaderEXT> createShaders(VkDevice vkDevice, std::span<char> vertexCode, std::span<char> fragmentCode)
+{
+    VkShaderCreateInfoEXT shaderCreateInfoEXTs[]{
+        VkShaderCreateInfoEXT{
+            .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+            .flags = VK_SHADER_CREATE_LINK_STAGE_BIT_EXT,
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .nextStage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+            .codeSize = vertexCode.size(),
+            .pCode = vertexCode.data(),
+            .pName = "main",
+        },
+        VkShaderCreateInfoEXT{
+            .sType = VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT,
+            .flags = VK_SHADER_CREATE_LINK_STAGE_BIT_EXT,
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .codeType = VK_SHADER_CODE_TYPE_SPIRV_EXT,
+            .codeSize = fragmentCode.size(),
+            .pCode = fragmentCode.data(),
+            .pName = "main",
+        }
+    };
+    const uint32_t shaderCount = std::size(shaderCreateInfoEXTs);
+    std::vector<VkShaderEXT> vkShaderEXTs(shaderCount);
+    assertVkSuccess(
+        vkCreateShadersEXT(vkDevice,
+                           shaderCount,
+                           shaderCreateInfoEXTs,
+                           pAllocator,
+                           vkShaderEXTs.data()));
+    return vkShaderEXTs;
+}
+
+
+Swapchain prepareSwapchain(VkPhysicalDevice vkPhysicalDevice,
+                           VkDevice vkDevice,
+                           VkSurfaceKHR vkSurface,
+                           VkFormat queueImageFormat,
+                           VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE)
+{
+    VkSurfaceCapabilitiesKHR vkSurfaceCapabilities;
+    assertVkSuccess(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vkPhysicalDevice, vkSurface, &vkSurfaceCapabilities));
+    // TODO: ensure the capabilities we are using are indeed available in vkSurfaceCapabilities.
+
+    Swapchain result{
+        .vkDevice = vkDevice,
+        .imageExtent = vkSurfaceCapabilities.currentExtent,
+        .mOutOfDate = false,
+    };
+
+    //TODO: we should compare to a tutorial, there is so much here
+    VkSwapchainCreateInfoKHR swapchainCreateInfoKHR{
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface = vkSurface,
+        .minImageCount = 2, // Double-buffering, I guess requires 2
+        .imageFormat = queueImageFormat,
+        .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, // This is where we would HDR
+        .imageExtent = result.imageExtent,
+        .imageArrayLayers = 1,
+        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT 
+                    | VK_IMAGE_USAGE_TRANSFER_DST_BIT // notably required for clear command
+                    // Depth stencil attachment is not a valid usage (thank you validation layer)
+                    //| VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                    ,
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, // treate the image as opaque when compositing
+        .presentMode = VK_PRESENT_MODE_FIFO_KHR, // TODO: can we do better? This is the only required mode
+        .clipped = VK_FALSE, // let's be safe ATM
+        .oldSwapchain = oldSwapchain,
+    };
+    assertVkSuccess(vkCreateSwapchainKHR(vkDevice, &swapchainCreateInfoKHR, pAllocator, &result.vkSwapchain));
+
+    // Get swapchain images. They are fully backed by memory.
+    uint32_t swapchainImageCount;
+    assertVkSuccess(vkGetSwapchainImagesKHR(vkDevice, result.vkSwapchain, &swapchainImageCount, nullptr));
+    result.swapchainImages = std::vector<VkImage>(swapchainImageCount);
+    assertVkSuccess(vkGetSwapchainImagesKHR(vkDevice, result.vkSwapchain, &swapchainImageCount, result.swapchainImages.data()));
+    std::cout << "Swapchain has " << swapchainImageCount << " images.\n\n";
+
+    // Prepare image view for each image in the swapchain
+    result.renderImageViews = std::vector<VkImageView>(swapchainImageCount);
+    VkImageViewCreateInfo imageViewCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = queueImageFormat,
+        .subresourceRange = gSwapchainImageFullRange,
+    };
+    for(std::size_t imageIdx= 0; imageIdx != swapchainImageCount; ++imageIdx)
+    {
+        imageViewCreateInfo.image = result.swapchainImages[imageIdx],
+        assertVkSuccess(
+            vkCreateImageView(vkDevice, &imageViewCreateInfo, pAllocator, &result.renderImageViews[imageIdx]));
+        NAME_VKOBJECT_IDX(result.renderImageViews[imageIdx], imageIdx);
+    }
+
+    return result;
+};
+
+
+std::pair<VkBuffer, VkDeviceMemory> prepareVertexBuffer(VkDevice vkDevice, std::size_t vertexDataSize, uint32_t deviceLocalMemoryTypeIndex)
+{
+    VkBufferCreateInfo vertexBufferCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = vertexDataSize,
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+                 // TODO: confirm that memory mapped write are not considered transfer_dst operations
+                 //| VK_BUFFER_USAGE_TRANSFER_DST_BIT 
+    };
+    VkBuffer vkVertexBuffer;
+    vkCreateBuffer(vkDevice, &vertexBufferCreateInfo, pAllocator, &vkVertexBuffer);
+
+    VkMemoryRequirements vkVertexMemoryRequirements;
+    vkGetBufferMemoryRequirements(vkDevice, vkVertexBuffer, &vkVertexMemoryRequirements);
+
+    {
+        // TODO: confirm this understanding of vkVertexMemoryRequirements.memoryTypeBits
+        uint32_t selectedMemoryTypeBit = 0b1 << deviceLocalMemoryTypeIndex;
+        assert((vkVertexMemoryRequirements.memoryTypeBits & selectedMemoryTypeBit)
+               == selectedMemoryTypeBit);
+    }
+
+    VkMemoryAllocateInfo memoryAllocateInfo{
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = vkVertexMemoryRequirements.size,
+        .memoryTypeIndex = deviceLocalMemoryTypeIndex,
+    };
+    VkDeviceMemory vkVertexDeviceMemory;
+    vkAllocateMemory(vkDevice, &memoryAllocateInfo, pAllocator, &vkVertexDeviceMemory);
+
+    vkBindBufferMemory(vkDevice, vkVertexBuffer, vkVertexDeviceMemory, 0);
+
+    return {vkVertexBuffer, vkVertexDeviceMemory};
+}
+
+
 void setDynamicPipelineState(VkCommandBuffer vkCommandBuffer, VkExtent2D aSurfaceExtent)
 {
     // Note: the viewport coordinate system is top-left origin (Y going down),
@@ -409,81 +680,3 @@ void setDynamicPipelineState(VkCommandBuffer vkCommandBuffer, VkExtent2D aSurfac
     vkCmdSetColorBlendEquationEXT(vkCommandBuffer, 0, std::size(colorBlendEquations), colorBlendEquations);
 
 }
-
-template <class T_handle>
-constexpr VkObjectType getObjectType()
-{
-#define MAP(objectType, handleType) \
-    else if(std::is_same_v<T_handle, handleType>) return objectType
-
-    if constexpr(std::is_same_v<T_handle, VkInstance>) return VK_OBJECT_TYPE_INSTANCE;
-    MAP(VK_OBJECT_TYPE_INSTANCE, VkInstance);
-    MAP(VK_OBJECT_TYPE_PHYSICAL_DEVICE, VkPhysicalDevice);
-    MAP(VK_OBJECT_TYPE_DEVICE, VkDevice);
-    MAP(VK_OBJECT_TYPE_QUEUE, VkQueue);
-    MAP(VK_OBJECT_TYPE_SEMAPHORE, VkSemaphore);
-    MAP(VK_OBJECT_TYPE_COMMAND_BUFFER, VkCommandBuffer);
-    MAP(VK_OBJECT_TYPE_FENCE, VkFence);
-    MAP(VK_OBJECT_TYPE_DEVICE_MEMORY, VkDeviceMemory);
-    MAP(VK_OBJECT_TYPE_BUFFER, VkBuffer);
-    MAP(VK_OBJECT_TYPE_IMAGE, VkImage);
-    MAP(VK_OBJECT_TYPE_EVENT, VkEvent);
-    MAP(VK_OBJECT_TYPE_QUERY_POOL, VkQueryPool);
-    MAP(VK_OBJECT_TYPE_BUFFER_VIEW, VkBufferView);
-    MAP(VK_OBJECT_TYPE_IMAGE_VIEW, VkImageView);
-    MAP(VK_OBJECT_TYPE_SHADER_MODULE, VkShaderModule);
-    MAP(VK_OBJECT_TYPE_PIPELINE_CACHE, VkPipelineCache);
-    MAP(VK_OBJECT_TYPE_PIPELINE_LAYOUT, VkPipelineLayout);
-    MAP(VK_OBJECT_TYPE_RENDER_PASS, VkRenderPass);
-    MAP(VK_OBJECT_TYPE_PIPELINE, VkPipeline);
-    MAP(VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, VkDescriptorSetLayout);
-    MAP(VK_OBJECT_TYPE_SAMPLER, VkSampler);
-    MAP(VK_OBJECT_TYPE_DESCRIPTOR_POOL, VkDescriptorPool);
-    MAP(VK_OBJECT_TYPE_DESCRIPTOR_SET, VkDescriptorSet);
-    MAP(VK_OBJECT_TYPE_FRAMEBUFFER, VkFramebuffer);
-    MAP(VK_OBJECT_TYPE_COMMAND_POOL, VkCommandPool);
-    MAP(VK_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION, VkSamplerYcbcrConversion);
-    MAP(VK_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE, VkDescriptorUpdateTemplate);
-    MAP(VK_OBJECT_TYPE_PRIVATE_DATA_SLOT, VkPrivateDataSlot);
-    MAP(VK_OBJECT_TYPE_SURFACE_KHR, VkSurfaceKHR);
-    MAP(VK_OBJECT_TYPE_SWAPCHAIN_KHR, VkSwapchainKHR);
-    MAP(VK_OBJECT_TYPE_DISPLAY_KHR, VkDisplayKHR);
-    MAP(VK_OBJECT_TYPE_DISPLAY_MODE_KHR, VkDisplayModeKHR);
-    MAP(VK_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT, VkDebugReportCallbackEXT);
-    MAP(VK_OBJECT_TYPE_VIDEO_SESSION_KHR, VkVideoSessionKHR);
-    MAP(VK_OBJECT_TYPE_VIDEO_SESSION_PARAMETERS_KHR, VkVideoSessionParametersKHR);
-    MAP(VK_OBJECT_TYPE_DEBUG_UTILS_MESSENGER_EXT, VkDebugUtilsMessengerEXT);
-    MAP(VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR, VkAccelerationStructureKHR);
-    MAP(VK_OBJECT_TYPE_VALIDATION_CACHE_EXT, VkValidationCacheEXT);
-    MAP(VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV, VkAccelerationStructureNV);
-    MAP(VK_OBJECT_TYPE_PERFORMANCE_CONFIGURATION_INTEL, VkPerformanceConfigurationINTEL);
-    MAP(VK_OBJECT_TYPE_DEFERRED_OPERATION_KHR, VkDeferredOperationKHR);
-    MAP(VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV, VkIndirectCommandsLayoutNV);
-    MAP(VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_EXT, VkIndirectCommandsLayoutEXT);
-    MAP(VK_OBJECT_TYPE_INDIRECT_EXECUTION_SET_EXT, VkIndirectExecutionSetEXT);
-    //MAP(VK_OBJECT_TYPE_BUFFER_COLLECTION_FUCHSIA, VkBufferCollectionFUCHSIA);
-    MAP(VK_OBJECT_TYPE_MICROMAP_EXT, VkMicromapEXT);
-    MAP(VK_OBJECT_TYPE_OPTICAL_FLOW_SESSION_NV, VkOpticalFlowSessionNV);
-    MAP(VK_OBJECT_TYPE_SHADER_EXT, VkShaderEXT);
-    MAP(VK_OBJECT_TYPE_TENSOR_ARM, VkTensorARM);
-    MAP(VK_OBJECT_TYPE_TENSOR_VIEW_ARM, VkTensorViewARM);
-    MAP(VK_OBJECT_TYPE_DATA_GRAPH_PIPELINE_SESSION_ARM, VkDataGraphPipelineSessionARM);
-    else return VK_OBJECT_TYPE_UNKNOWN;
-
-#undef MAP
-}
-
-template <class T_handle>
-void nameObject(VkDevice vkDevice, T_handle aHandle, const char * aName)
-{
-    VkDebugUtilsObjectNameInfoEXT  nameInfo{
-        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-        .objectType = getObjectType<T_handle>(),
-        .objectHandle = reinterpret_cast<uint64_t>(aHandle),
-        .pObjectName = aName,
-    };
-    vkSetDebugUtilsObjectNameEXT(vkDevice, &nameInfo);
-}
-
-#define NAME_VKOBJECT(object) nameObject(vkDevice, object, #object);
-#define NAME_VKOBJECT_IDX(object, index) nameObject(vkDevice, object, (#object + std::to_string(index)).c_str());
