@@ -435,6 +435,18 @@ VkFence createFence(VkDevice vkDevice)
 }
 
 
+VkSemaphore createSemaphore(VkDevice vkDevice, const char * aName)
+{
+    VkSemaphoreCreateInfo semaphoreCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    };
+    VkSemaphore vkSemaphore;
+    assertVkSuccess(vkCreateSemaphore(vkDevice, &semaphoreCreateInfo, pAllocator, &vkSemaphore));
+    nameObject(vkDevice, vkSemaphore, aName);
+    return vkSemaphore;
+}
+
+
 void printSupportedSurfaceFormat(VkPhysicalDevice vkPhysicalDevice, VkSurfaceKHR vkSurface)
 {
     // Query supported swapchain format-colorspace pairs

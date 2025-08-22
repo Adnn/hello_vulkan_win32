@@ -247,12 +247,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                 // 
                 // TICK
                 //
-                VkSemaphore acquireSemaphore = VK_NULL_HANDLE;
-                VkFence acquireFence;
-                VkFenceCreateInfo fenceCreateInfo{
-                    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-                };
-                assertVkSuccess(vkCreateFence(vkDevice, &fenceCreateInfo, pAllocator, &acquireFence));
+                //VkSemaphore acquireSemaphore = VK_NULL_HANDLE;
+                VkSemaphore acquireSemaphore = createSemaphore(vkDevice, "acquire_image");
+                VkFence acquireFence = VK_NULL_HANDLE;
+                //VkFence acquireFence;
+                //VkFenceCreateInfo fenceCreateInfo{
+                //    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+                //};
+                //assertVkSuccess(vkCreateFence(vkDevice, &fenceCreateInfo, pAllocator, &acquireFence));
 
                 uint32_t nextImageIndex;
                 // TODO: handle window resize (VK_ERROR_OUT_OF_DATE_KHR?)
@@ -261,12 +263,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 
                 VkImage nextImage = swapchain.swapchainImages[nextImageIndex];
 
-                // Use synchronization to ensure presentation engine reads have completed on the next image.
-                // TODO: Implement the recommended idiom via semaphore instead (from WSI Swapchain):
-                // > When the presentable image will be accessed by some stage S, the recommended idiom for ensuring correct synchronization is:
-                // TODO: can probably be moved to queue submission
-                assertVkSuccess(vkWaitForFences(vkDevice, 1, &acquireFence, VK_TRUE, UINT64_MAX));
-                vkDestroyFence(vkDevice, acquireFence, pAllocator);
+                if(acquireFence != VK_NULL_HANDLE)
+                {
+                    // Use synchronization to ensure presentation engine reads have completed on the next image.
+                    // Note: Replaced with the recommended idiom via semaphore instead (from WSI Swapchain):
+                    // > When the presentable image will be accessed by some stage S, the recommended idiom for ensuring correct synchronization is:
+                    assertVkSuccess(vkWaitForFences(vkDevice, 1, &acquireFence, VK_TRUE, UINT64_MAX));
+                    vkDestroyFence(vkDevice, acquireFence, pAllocator);
+                }
 
                 // Move CB to recording state
                 VkCommandBufferBeginInfo commandBufferBeginInfo{
@@ -279,6 +283,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                 // > the application must transition them to a valid layout for the intended use.
                 VkImageMemoryBarrier2 imageMemoryBarrier2{
                     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+
+                    // TODO: understand which stages should appear here
+                    // I followed the note (but probably missunderstood it)
+                    // > When the presentable image will be accessed by some stage S, the recommended idiom for ensuring correct synchronization is:
+                    .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+
                     .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                     .newLayout = VK_IMAGE_LAYOUT_GENERAL,
                     .image = nextImage,
@@ -403,6 +414,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                 assertVkSuccess(vkEndCommandBuffer(vkCommandBuffer));
 
                 //submit queue
+                VkSemaphoreSubmitInfo waitSemaphoreSubmitInfo{
+                    .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                    .semaphore = acquireSemaphore,
+                    .stageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                };
+
                 VkCommandBufferSubmitInfo commandBufferSubmitInfo{
                     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
                     .commandBuffer = vkCommandBuffer,
@@ -418,6 +435,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 
                 VkSubmitInfo2 submitInfo2{
                     .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+                    .waitSemaphoreInfoCount = 1,
+                    .pWaitSemaphoreInfos = &waitSemaphoreSubmitInfo,
                     .commandBufferInfoCount = 1,
                     .pCommandBufferInfos = &commandBufferSubmitInfo,
                     .signalSemaphoreInfoCount = 1,
@@ -452,6 +471,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                 // before we call Begin on next frame.
                 assertVkSuccess(vkWaitForFences(vkDevice, 1, &submitFence, VK_TRUE, UINT64_MAX));
                 vkDestroyFence(vkDevice, submitFence, pAllocator);
+
+                vkDestroySemaphore(vkDevice, acquireSemaphore, pAllocator);
             }
 
         }
