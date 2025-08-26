@@ -196,7 +196,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     // Create shader objects
     std::vector<char> vertexCode = readFile("shaders/spirv/Forward.vert.spv");
     std::vector<char> fragmentCode = readFile("shaders/spirv/Color.frag.spv");
-    std::vector<VkShaderEXT> vkShaderEXTs = createShaders(vkDevice, vertexCode, fragmentCode);
+    std::vector<VkShaderEXT> vkShaderEXTs = createShaderObjects(vkDevice, vertexCode, fragmentCode);
 
     // Vertex Attribute Data
     const std::size_t vertexDataSize = sizeof(gTriangle);
@@ -215,6 +215,76 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
         // in commands from a subsequent queue submission.
         // see access scope in: https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-submission-host-writes
     }
+
+    //
+    // Render Pass Object (used when not going through dynamic rendering)
+    //
+    VkRenderPass vkRenderPass;
+    {
+        VkAttachmentDescription attachmentDescription{
+            .format = queueImageFormat,
+            .samples = VK_SAMPLE_COUNT_1_BIT,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            // TODO: are those encompassing the layout transitions?
+            // The transition should apparently occur before, due to: VUID-VkAttachmentReference-layout-03077
+            .initialLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .finalLayout = VK_IMAGE_LAYOUT_GENERAL,
+        };
+
+        VkAttachmentReference colorAttachmentReference{
+            .attachment = 0, // Idx of the attachment in renderPassCreateInfo
+            // TODO: Does the first transition happen before the subpass?
+            .layout = VK_IMAGE_LAYOUT_GENERAL,
+        };
+        VkAttachmentReference dephtStencilAttachmentReference{
+            .attachment = VK_ATTACHMENT_UNUSED,
+        };
+        VkSubpassDescription subpassDescription{
+            .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS, 
+            .inputAttachmentCount = 0,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &colorAttachmentReference,
+            .pResolveAttachments = NULL,
+            .pDepthStencilAttachment = &dephtStencilAttachmentReference,
+            .preserveAttachmentCount = 0,
+        };
+
+        VkRenderPassCreateInfo renderPassCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+            .attachmentCount = 1,
+            .pAttachments = &attachmentDescription,
+            .subpassCount = 1,
+            .pSubpasses = &subpassDescription,
+            .dependencyCount = 0,
+            .pDependencies = NULL,
+        };
+        vkCreateRenderPass(vkDevice, &renderPassCreateInfo, pAllocator, &vkRenderPass);
+    }
+
+    // Framebuffer
+    std::vector<VkFramebuffer> framebuffers;//(swapchain.renderImageViews.size());
+    {
+        VkFramebufferCreateInfo framebufferCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+            .renderPass = vkRenderPass,
+            .attachmentCount = 1,
+            .width = swapchain.imageExtent.width,
+            .height = swapchain.imageExtent.height,
+            .layers = 1,
+        };
+
+        for(VkImageView imageView : swapchain.renderImageViews)
+        {
+            framebufferCreateInfo.pAttachments = &imageView;
+            framebuffers.emplace_back();
+            vkCreateFramebuffer(vkDevice, &framebufferCreateInfo, pAllocator, &framebuffers.back());
+        }
+    }
+
+
+    // Graphics Pipeline
+    VkPipeline vkPipeline = createStaticPipeline(vkDevice, swapchain, vkRenderPass, vertexCode, fragmentCode);
+    
 
     //
     // Show window and enter main event loop
@@ -314,6 +384,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                                      &gSwapchainImageFullRange);
 
                 // Draw
+                const VkRect2D renderArea{
+                    .offset = VkOffset2D{0, 0},
+                    .extent = swapchain.imageExtent,
+                };
+                bool dynamic = false;
+                if(dynamic)
                 {
                     VkRenderingAttachmentInfo renderingColorAttachmentInfo{
                         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -322,10 +398,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                     };
                     VkRenderingInfo renderingInfo{
                         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                        .renderArea = VkRect2D{
-                            .offset = VkOffset2D{0, 0},
-                            .extent = swapchain.imageExtent,
-                        },
+                        .renderArea = renderArea,
                         .layerCount = 1,
                         .colorAttachmentCount = 1,
                         .pColorAttachments = &renderingColorAttachmentInfo,
@@ -402,6 +475,31 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                     vkCmdDraw(vkCommandBuffer, 3, 1, 0, 0);
 
                     vkCmdEndRendering(vkCommandBuffer);
+                }
+                else
+                {
+                    VkRenderPassBeginInfo renderPassBeginInfo{
+                        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                        .renderPass = vkRenderPass,
+                        .framebuffer = framebuffers[nextImageIndex],
+                        .renderArea = renderArea,
+                        .clearValueCount = 0,
+                        .pClearValues = NULL,
+                    };
+                    vkCmdBeginRenderPass(vkCommandBuffer, &renderPassBeginInfo, 
+                                         // The content of the first subpass will be recorded inline in the primary command buffer
+                                         VK_SUBPASS_CONTENTS_INLINE);
+
+                    vkCmdBindPipeline(vkCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkPipeline);
+
+                    // Associate the vertex input bindings to buffers (per-draw)
+                    VkDeviceSize vertexBufferOffset = 0;
+                    vkCmdBindVertexBuffers(vkCommandBuffer, 1, 1, &vkVertexBuffer, &vertexBufferOffset);
+
+                    // Non-indexed draw
+                    vkCmdDraw(vkCommandBuffer, 3, 1, 0, 0);
+
+                    vkCmdEndRenderPass(vkCommandBuffer);
                 }
 
                 // Transition to presentation layout
@@ -482,6 +580,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     //
     // Vulkan clean-up
     //
+
+    // Pipeline
+    vkDestroyPipeline(vkDevice, vkPipeline, pAllocator);
+
+    // Render pass and framebuffers
+    for(VkFramebuffer framebuffer : framebuffers)
+    {
+        vkDestroyFramebuffer(vkDevice, framebuffer, pAllocator);
+    }
+    vkDestroyRenderPass(vkDevice, vkRenderPass, pAllocator);
 
     // Buffers
     vkFreeMemory(vkDevice, vkVertexDeviceMemory, pAllocator);

@@ -467,7 +467,7 @@ void printSupportedSurfaceFormat(VkPhysicalDevice vkPhysicalDevice, VkSurfaceKHR
 }
 
     
-std::vector<VkShaderEXT> createShaders(VkDevice vkDevice, std::span<char> vertexCode, std::span<char> fragmentCode)
+std::vector<VkShaderEXT> createShaderObjects(VkDevice vkDevice, std::span<char> vertexCode, std::span<char> fragmentCode)
 {
     VkShaderCreateInfoEXT shaderCreateInfoEXTs[]{
         VkShaderCreateInfoEXT{
@@ -604,7 +604,7 @@ std::pair<VkBuffer, VkDeviceMemory> prepareVertexBuffer(VkDevice vkDevice, std::
 }
 
 
-void setDynamicPipelineState(VkCommandBuffer vkCommandBuffer, VkExtent2D aSurfaceExtent)
+VkViewport getViewport(VkExtent2D aSurfaceExtent)
 {
     // Note: the viewport coordinate system is top-left origin (Y going down),
     // which is opposite to OpenGL.
@@ -627,6 +627,14 @@ void setDynamicPipelineState(VkCommandBuffer vkCommandBuffer, VkExtent2D aSurfac
         .maxDepth = 1,
     };
     #endif
+
+    return vkViewport;
+}
+
+
+void setDynamicPipelineState(VkCommandBuffer vkCommandBuffer, VkExtent2D aSurfaceExtent)
+{
+    VkViewport vkViewport = getViewport(aSurfaceExtent);
     vkCmdSetViewportWithCount(vkCommandBuffer, 1, &vkViewport);
 
     VkRect2D scissor{
@@ -690,5 +698,205 @@ void setDynamicPipelineState(VkCommandBuffer vkCommandBuffer, VkExtent2D aSurfac
         },
     };
     vkCmdSetColorBlendEquationEXT(vkCommandBuffer, 0, std::size(colorBlendEquations), colorBlendEquations);
+}
 
+
+VkPipeline createStaticPipeline(VkDevice vkDevice,
+                                Swapchain swapchain,
+                                VkRenderPass vkRenderPass,
+                                std::span<char> vertexCode,
+                                std::span<char> fragmentCode)
+{
+    //
+    // Shaders
+    //
+    std::array<VkShaderModuleCreateInfo, 2> shaderModuleCreateInfoArray{{
+        {
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .codeSize = vertexCode.size(),
+            .pCode = reinterpret_cast<const uint32_t *>(vertexCode.data()),
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .codeSize = fragmentCode.size(),
+            .pCode = reinterpret_cast<const uint32_t *>(fragmentCode.data()),
+        },
+    }};
+    
+    std::array<VkShaderModule, 2> shaderModuleArray;
+    vkCreateShaderModule(vkDevice, &shaderModuleCreateInfoArray[0], pAllocator, &shaderModuleArray[0]);
+    vkCreateShaderModule(vkDevice, &shaderModuleCreateInfoArray[1], pAllocator, &shaderModuleArray[1]);
+
+    std::array<VkPipelineShaderStageCreateInfo, 2> stageCreateInfoArray{{
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .module = shaderModuleArray[0],
+            .pName = "main",
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = shaderModuleArray[1],
+            .pName = "main",
+        },
+    }};
+
+    // 
+    // Vertex Input and Assembly (Vertex input state)
+    //
+
+    // Extremely similar to the equivalent dynamic rendering descriptions
+    // but they use the 2EXT version.
+    VkVertexInputBindingDescription vertexInputBindingDescriptions[]{
+        {
+            .binding = 1,
+            .stride = sizeof(Vertex),
+            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+        },
+    };
+
+    VkVertexInputAttributeDescription vertexInputAttributeDescription[]{
+        {
+            .location = 1,
+            .binding = 1,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = 0,
+        },
+        {
+            .location = 2,
+            .binding = 1,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = offsetof(Vertex, mColor),
+        },
+    };
+
+    VkPipelineVertexInputStateCreateInfo pipelineVertexInputStateCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .vertexBindingDescriptionCount = std::size(vertexInputBindingDescriptions),
+        .pVertexBindingDescriptions = vertexInputBindingDescriptions,
+        .vertexAttributeDescriptionCount = std::size(vertexInputAttributeDescription),
+        .pVertexAttributeDescriptions = vertexInputAttributeDescription,
+    };
+
+    VkPipelineInputAssemblyStateCreateInfo pipelineInputAssemblyStateCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+        .primitiveRestartEnable = VK_FALSE,
+    };
+    
+    //
+    // Viewport
+    //
+    VkViewport vkViewport = getViewport(swapchain.imageExtent);
+
+    VkRect2D scissor{
+        .extent = swapchain.imageExtent,
+    };
+
+    VkPipelineViewportStateCreateInfo pipelineViewportStateCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .pViewports = &vkViewport,
+        .scissorCount = 1,
+        .pScissors = &scissor,
+    };
+
+
+    //
+    // Rasterization, multisample, depth-stencil
+    //
+    VkPipelineRasterizationStateCreateInfo pipelineRasterizationStateCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .depthClampEnable = VK_FALSE,
+        .rasterizerDiscardEnable = VK_FALSE,
+        .polygonMode = VK_POLYGON_MODE_FILL,
+        .cullMode = VK_CULL_MODE_BACK_BIT,
+        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+        .depthBiasEnable = VK_FALSE,
+        .lineWidth = 1.0f,
+    };
+
+    VkSampleMask sampleMask = VK_SAMPLE_COUNT_1_BIT;
+    VkPipelineMultisampleStateCreateInfo pipelineMultisampleStateCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+        .sampleShadingEnable = VK_FALSE,
+        .minSampleShading = 0, // Useless as we disabled sample shading altogether
+        .pSampleMask = &sampleMask,
+        .alphaToCoverageEnable = VK_FALSE,
+        .alphaToOneEnable = VK_FALSE,
+    };
+
+    VkPipelineDepthStencilStateCreateInfo pipelineDepthStencilStateCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,    
+        .depthTestEnable = VK_TRUE,
+        .depthWriteEnable = VK_TRUE,
+        .depthCompareOp = VK_COMPARE_OP_LESS,
+        .depthBoundsTestEnable = VK_FALSE,
+        .stencilTestEnable = VK_FALSE,
+    };
+
+    //
+    // Color blend
+    //
+    VkPipelineColorBlendAttachmentState pipelineColorBlendAttachmentState{
+        .blendEnable = VK_FALSE,
+        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+    };
+    VkPipelineColorBlendStateCreateInfo pipelineColorBlendStateCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .logicOpEnable = VK_FALSE,
+        .attachmentCount = 1,
+        .pAttachments = &pipelineColorBlendAttachmentState,
+    };
+
+    //
+    // Pipeline layout
+    //
+    VkPipelineLayout vkPipelineLayout;
+    VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 0, 
+        .pushConstantRangeCount = 0,
+    };
+    vkCreatePipelineLayout(vkDevice, &pipelineLayoutCreateInfo, pAllocator, &vkPipelineLayout);
+
+    VkGraphicsPipelineCreateInfo graphicsPipelineCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .stageCount = stageCreateInfoArray.size(),
+        .pStages = stageCreateInfoArray.data(),
+        .pVertexInputState = &pipelineVertexInputStateCreateInfo,
+        .pInputAssemblyState = &pipelineInputAssemblyStateCreateInfo,
+        .pTessellationState = NULL,
+        .pViewportState = &pipelineViewportStateCreateInfo,
+        .pRasterizationState = &pipelineRasterizationStateCreateInfo,
+        .pMultisampleState = &pipelineMultisampleStateCreateInfo,
+        .pDepthStencilState = &pipelineDepthStencilStateCreateInfo,
+        .pColorBlendState = &pipelineColorBlendStateCreateInfo,
+        .pDynamicState = NULL, // We could actually set dynamic state here, to reuse the setDynamicPipelineState() helper
+        .layout = vkPipelineLayout,
+        .renderPass = vkRenderPass,
+        .subpass = 0, // subpass index
+    };
+
+    VkPipeline vkPipeline;
+    vkCreateGraphicsPipelines(
+        vkDevice,
+        VK_NULL_HANDLE,
+        1,
+        &graphicsPipelineCreateInfo,
+        pAllocator,
+        &vkPipeline);
+
+    // Above Vulkan 1.3, layout must not be accessed outside the creation command
+    vkDestroyPipelineLayout(vkDevice, vkPipelineLayout, pAllocator);
+
+    // Note: shader modules can be destroyed while pipelines using its shaders are still in use.
+    for(VkShaderModule shaderModule : shaderModuleArray)
+    {
+        vkDestroyShaderModule(vkDevice, shaderModule, pAllocator);
+    }
+
+    return vkPipeline;
 }

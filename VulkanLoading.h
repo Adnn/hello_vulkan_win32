@@ -103,6 +103,19 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkBindBufferMemory);
     D(vkMapMemory);
     D(vkUnmapMemory);
+    D(vkCreateRenderPass);
+    D(vkDestroyRenderPass);
+    D(vkCreateFramebuffer);
+    D(vkDestroyFramebuffer);
+    D(vkCmdBeginRenderPass);
+    D(vkCmdEndRenderPass);
+    D(vkCreateGraphicsPipelines);
+    D(vkDestroyPipeline);
+    D(vkCreateShaderModule);
+    D(vkDestroyShaderModule);
+    D(vkCreatePipelineLayout);
+    D(vkDestroyPipelineLayout);
+    D(vkCmdBindPipeline);
 
     // VK_KHR_swapchain
     D(vkCreateSwapchainKHR);
@@ -246,6 +259,19 @@ void initializeForDevice(VkDevice aDevice)
     D(vkBindBufferMemory);
     D(vkMapMemory);
     D(vkUnmapMemory);
+    D(vkCreateRenderPass);
+    D(vkDestroyRenderPass);
+    D(vkCreateFramebuffer);
+    D(vkDestroyFramebuffer);
+    D(vkCmdBeginRenderPass);
+    D(vkCmdEndRenderPass);
+    D(vkCreateGraphicsPipelines);
+    D(vkDestroyPipeline);
+    D(vkCreateShaderModule);
+    D(vkDestroyShaderModule);
+    D(vkCreatePipelineLayout);
+    D(vkDestroyPipelineLayout);
+    D(vkCmdBindPipeline);
 
     D(vkCreateSwapchainKHR);
     D(vkDestroySwapchainKHR);
