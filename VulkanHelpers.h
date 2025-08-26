@@ -701,8 +701,31 @@ void setDynamicPipelineState(VkCommandBuffer vkCommandBuffer, VkExtent2D aSurfac
 }
 
 
+std::vector<VkFramebuffer> createFramebuffers(VkDevice vkDevice, VkRenderPass vkRenderPass, const Swapchain & swapchain)
+{
+    std::vector<VkFramebuffer> framebuffers;
+    VkFramebufferCreateInfo framebufferCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        .renderPass = vkRenderPass,
+        .attachmentCount = 1,
+        .width = swapchain.imageExtent.width,
+        .height = swapchain.imageExtent.height,
+        .layers = 1,
+    };
+
+    for(VkImageView imageView : swapchain.renderImageViews)
+    {
+        framebufferCreateInfo.pAttachments = &imageView;
+        framebuffers.emplace_back();
+        vkCreateFramebuffer(vkDevice, &framebufferCreateInfo, pAllocator, &framebuffers.back());
+    }
+
+    return framebuffers;
+}
+
+
 VkPipeline createStaticPipeline(VkDevice vkDevice,
-                                Swapchain swapchain,
+                                const Swapchain & swapchain,
                                 VkRenderPass vkRenderPass,
                                 std::span<char> vertexCode,
                                 std::span<char> fragmentCode)
@@ -899,4 +922,17 @@ VkPipeline createStaticPipeline(VkDevice vkDevice,
     }
 
     return vkPipeline;
+}
+
+
+void destroyPipelineAndFramebuffers(VkDevice vkDevice, VkPipeline vkPipeline, std::span<VkFramebuffer> framebuffers)
+{
+    // Pipeline
+    vkDestroyPipeline(vkDevice, vkPipeline, pAllocator);
+
+    // Render pass and framebuffers
+    for(VkFramebuffer framebuffer : framebuffers)
+    {
+        vkDestroyFramebuffer(vkDevice, framebuffer, pAllocator);
+    }
 }

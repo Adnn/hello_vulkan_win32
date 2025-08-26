@@ -15,6 +15,11 @@
 
 #include <cassert>
 
+// Toggle between:
+// * false: Vulkan 1.0 style rendering, with Render Pass and Framebuffer objects, and a fully static graphics pipeline
+// * true: dynamic rendering (`vkCmdBeginRendering()`) with shader objects (no pipeline object).
+constexpr bool gDynamicRendering = false;
+
 VkInstance vkInstance;
 VkDevice vkDevice;
 
@@ -261,26 +266,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
         vkCreateRenderPass(vkDevice, &renderPassCreateInfo, pAllocator, &vkRenderPass);
     }
 
-    // Framebuffer
-    std::vector<VkFramebuffer> framebuffers;//(swapchain.renderImageViews.size());
-    {
-        VkFramebufferCreateInfo framebufferCreateInfo{
-            .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-            .renderPass = vkRenderPass,
-            .attachmentCount = 1,
-            .width = swapchain.imageExtent.width,
-            .height = swapchain.imageExtent.height,
-            .layers = 1,
-        };
-
-        for(VkImageView imageView : swapchain.renderImageViews)
-        {
-            framebufferCreateInfo.pAttachments = &imageView;
-            framebuffers.emplace_back();
-            vkCreateFramebuffer(vkDevice, &framebufferCreateInfo, pAllocator, &framebuffers.back());
-        }
-    }
-
+    // Framebuffers
+    std::vector<VkFramebuffer> framebuffers = createFramebuffers(vkDevice, vkRenderPass, swapchain);
 
     // Graphics Pipeline
     VkPipeline vkPipeline = createStaticPipeline(vkDevice, swapchain, vkRenderPass, vertexCode, fragmentCode);
@@ -310,8 +297,17 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                     // Wait until all queue submission commands have completed,
                     // guaranteeing the submit-semaphore have been signaled
                     assertVkSuccess(vkQueueWaitIdle(vkQueue));
+
+                    // Swapchain replacement
                     swapchain.destroy();
                     swapchain = prepareSwapchain(vkPhysicalDevice, vkDevice, vkSurface, queueImageFormat/*, swapchain.vkSwapchain*/);
+
+                    if(!gDynamicRendering)
+                    {
+                        destroyPipelineAndFramebuffers(vkDevice, vkPipeline, framebuffers);
+                        framebuffers = createFramebuffers(vkDevice, vkRenderPass, swapchain);
+                        vkPipeline = createStaticPipeline(vkDevice, swapchain, vkRenderPass, vertexCode, fragmentCode);
+                    }
                 }
 
                 // 
@@ -388,8 +384,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
                     .offset = VkOffset2D{0, 0},
                     .extent = swapchain.imageExtent,
                 };
-                bool dynamic = false;
-                if(dynamic)
+                if(gDynamicRendering)
                 {
                     VkRenderingAttachmentInfo renderingColorAttachmentInfo{
                         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -581,14 +576,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     // Vulkan clean-up
     //
 
-    // Pipeline
-    vkDestroyPipeline(vkDevice, vkPipeline, pAllocator);
-
-    // Render pass and framebuffers
-    for(VkFramebuffer framebuffer : framebuffers)
-    {
-        vkDestroyFramebuffer(vkDevice, framebuffer, pAllocator);
-    }
+    // Pipeline and framebuffers
+    destroyPipelineAndFramebuffers(vkDevice, vkPipeline, framebuffers);
+    
+    // Render pass 
     vkDestroyRenderPass(vkDevice, vkRenderPass, pAllocator);
 
     // Buffers
