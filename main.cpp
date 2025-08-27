@@ -50,8 +50,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     //
     // Vulkan dynamic loading and instance initialization
     //
+    constexpr uint32_t gRequestedVulkanVersion = VK_API_VERSION_1_4;
     initializeVulkan();
-    vkInstance = createInstance("vulkan_sample", VK_API_VERSION_1_4);
+    vkInstance = createInstance("vulkan_sample", gRequestedVulkanVersion);
     initializeForInstance(vkInstance);
     
     std::vector<VkPhysicalDevice> physicalDevices = enumeratePhysicalDevices(vkInstance);
@@ -60,6 +61,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     // We hardcode using the first physical device and create a logical device
     assert(!physicalDevices.empty());
     VkPhysicalDevice vkPhysicalDevice = physicalDevices.front();
+    assertPhysicalDeviceSupport(vkPhysicalDevice, gRequestedVulkanVersion); 
     QueueSelection queueSelection = pickQueueFamily(vkInstance, vkPhysicalDevice);
     vkDevice = createDevice(vkInstance, vkPhysicalDevice, queueSelection);
     initializeForDevice(vkDevice);

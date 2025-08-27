@@ -293,9 +293,14 @@ std::vector<VkPhysicalDevice> enumeratePhysicalDevices(VkInstance vkInstance)
 void printPhysicalDeviceProperties(VkInstance vkInstance,
                                   std::span<VkPhysicalDevice> aPhysicalDevices)
 {
+    VkPhysicalDeviceDriverProperties physicalDeviceDriverProperties{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
+    };
+
     // Exist for each other version, 12, 13, ...
     VkPhysicalDeviceVulkan11Properties physicalDeviceVulkan11Properties{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES,
+        .pNext = &physicalDeviceDriverProperties,
     };
 
     // There is a long list of poperties struct that can be passed in the pNext chain
@@ -326,6 +331,7 @@ void printPhysicalDeviceProperties(VkInstance vkInstance,
              << properties.properties.deviceName
              << "(" << toString_version(properties.properties.driverVersion) << ")"
              << " supports Vulkan " << toString_version(properties.properties.apiVersion)
+             << ", conformance version " << toString_version(physicalDeviceDriverProperties.conformanceVersion)
              << "\nsupported queues: "
              ;
 
@@ -342,6 +348,17 @@ void printPhysicalDeviceProperties(VkInstance vkInstance,
 
             std::cout << "\n\n";
     }
+}
+
+
+void assertPhysicalDeviceSupport(VkPhysicalDevice aPhysicalDevice,
+                                 const uint32_t aRequestedApiVersion)
+{
+    VkPhysicalDeviceProperties2 properties{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+    };
+    vkGetPhysicalDeviceProperties2(aPhysicalDevice, &properties);
+    assert(properties.properties.apiVersion >= aRequestedApiVersion);
 }
 
 
