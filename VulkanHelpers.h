@@ -126,6 +126,70 @@ VkBool32 VKAPI_PTR debugReportCallback(
     return VK_FALSE; // Vulkan API requirement
 }
 
+struct DebugUtilsMergeId
+{
+    std::atomic<std::size_t> mMessage;
+    std::atomic<int32_t> mId;
+
+    /// @return `true` if the message is considered to be a follow-up
+    bool update(const VkDebugUtilsMessengerCallbackDataEXT * pData)
+    {
+        auto newMessage = std::hash<std::string>{}(pData->pMessageIdName);
+        return
+            (newMessage == mMessage.exchange(newMessage)) 
+            && (pData->messageIdNumber == mId.exchange(pData->messageIdNumber))
+            ;
+    }
+};
+
+VkBool32 debugUtilsMessengerCallback(
+        VkDebugUtilsMessageSeverityFlagBitsEXT           messageSeverity,
+        VkDebugUtilsMessageTypeFlagsEXT                  messageTypes,
+        const VkDebugUtilsMessengerCallbackDataEXT*      pData,
+        void*                                            pUserData)
+{
+    DebugUtilsMergeId & merger = *reinterpret_cast<DebugUtilsMergeId *>(pUserData);
+
+    if(merger.update(pData))
+    {
+        std::cerr << pData->pMessage << "\n";
+    }
+    else
+    {
+        std::cerr << "(dbg_msg) " 
+            << vk::to_string(vk::DebugUtilsMessageTypeFlagsEXT{messageTypes})
+            << "::"
+            << vk::to_string(vk::DebugUtilsMessageSeverityFlagBitsEXT{(VkFlags)messageSeverity})
+            << ": [ " << pData->pMessageIdName << " ] | 0x" << std::hex << std::setw(8) << std::setfill('0') << pData->messageIdNumber 
+            << "\n" << pData->pMessage
+            << "\n" << "Objects: " << pData->objectCount
+            ;
+        for(std::size_t objectIdx = 0; objectIdx != pData->objectCount; ++objectIdx)
+        {
+            const VkDebugUtilsObjectNameInfoEXT & object = pData->pObjects[objectIdx];
+            std::cerr << "\n\t[" << objectIdx << "] " 
+                << vk::to_string(vk::ObjectType{object.objectType})
+                << " 0x" << object.objectHandle
+                << (object.pObjectName ? object.pObjectName : "")
+                ;
+        }
+        std::cerr << "\n";
+    }
+    std::cerr << "\n";
+
+    return VK_FALSE;
+}
+
+std::string toString_version(VkConformanceVersion aVersion)
+{
+    std::ostringstream oss;
+    oss << (int)aVersion.major << "."
+        << (int)aVersion.minor << "."
+        << (int)aVersion.patch
+        ;
+    return oss.str();
+}
+
 
 std::string toString_version(uint32_t aVersion)
 {

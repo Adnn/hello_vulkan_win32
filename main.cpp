@@ -54,6 +54,29 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     initializeVulkan();
     vkInstance = createInstance("vulkan_sample", gRequestedVulkanVersion);
     initializeForInstance(vkInstance);
+
+    VkDebugUtilsMessengerEXT vkDebugUtilsMessenger;
+    DebugUtilsMergeId merger;
+    {
+        VkDebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{
+            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
+                               | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT
+                               | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+                               | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            .messageType  = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+                            | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+                            | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+                            // Requires extension VK_EXT_device_address_binding_report
+                            //| VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT
+                            ,
+            .pfnUserCallback = &debugUtilsMessengerCallback,
+            .pUserData = &merger,
+        };
+        // Note: activating it disable the default validation layer printing, which is a shame
+        assertVkSuccess(
+            vkCreateDebugUtilsMessengerEXT(vkInstance, &debugUtilsMessengerCreateInfoEXT, pAllocator, &vkDebugUtilsMessenger));
+    }
     
     std::vector<VkPhysicalDevice> physicalDevices = enumeratePhysicalDevices(vkInstance);
     printPhysicalDeviceProperties(vkInstance, physicalDevices);
@@ -612,6 +635,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     // Device
     assertVkSuccess(vkDeviceWaitIdle(vkDevice));
     vkDestroyDevice(vkDevice, pAllocator);
+
+    // Debug utils messenger
+    vkDestroyDebugUtilsMessengerEXT(vkInstance, vkDebugUtilsMessenger, pAllocator);
+
     // Instance
     vkDestroyInstance(vkInstance, pAllocator);
 

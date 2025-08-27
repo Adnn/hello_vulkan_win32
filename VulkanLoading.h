@@ -37,6 +37,9 @@ PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
     D(vkGetPhysicalDeviceSurfaceFormatsKHR);
     // VK_KHR_win32_surface
     D(vkCreateWin32SurfaceKHR);
+    // VK_EXT_debug_utils
+    D(vkCreateDebugUtilsMessengerEXT);
+    D(vkDestroyDebugUtilsMessengerEXT);
 
     //
     // Device functions
@@ -185,6 +188,8 @@ void initializeForInstance(VkInstance aInstance)
 
     D(vkCreateWin32SurfaceKHR);
 
+    D(vkCreateDebugUtilsMessengerEXT);
+    D(vkDestroyDebugUtilsMessengerEXT);
 #undef D
 }
 
